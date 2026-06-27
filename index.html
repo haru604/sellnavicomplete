@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>セルナビ</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="セルナビ">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0f14">
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgcng9IjI0IiBmaWxsPSIjMTYxYTIzIi8+PHRleHQgeD0iNjQiIHk9Ijg0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwgQmxhY2ssc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSI1NiIgZmlsbD0iIzNiODJmNiI+U048L3RleHQ+PC9zdmc+">
+<style>
+  :root {
+    --bg:#0d0f14;--surface:#161a23;--surface2:#1e2330;--border:#2a3045;
+    --accent:#3b82f6;--accent2:#6366f1;--danger:#ef4444;--warn:#f59e0b;--ok:#22c55e;
+    --text:#e8ecf4;--text2:#8b95a9;--text3:#4d5771;--tab-h:62px;--header-h:52px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:15px;}
+  #app{display:flex;flex-direction:column;height:100%;}
+  .header{background:var(--surface);border-bottom:1px solid var(--border);height:var(--header-h);display:flex;align-items:center;padding:0 16px;flex-shrink:0;}
+  .header h1{font-size:16px;font-weight:700;letter-spacing:.03em;}
+  .header-sub{font-size:12px;color:var(--text2);margin-left:8px;}
+  .content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(var(--tab-h)+8px);}
+  .tab-bar{position:fixed;bottom:0;left:0;right:0;height:var(--tab-h);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:100;}
+  .tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--text3);font-size:10px;border:none;background:none;transition:color .15s;}
+  .tab-btn.active{color:var(--accent);}
+  .tab-btn svg{width:22px;height:22px;}
+  .page{display:none;}
+  .page.active{display:block;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin:12px 14px;}
+  .section-label{font-size:11px;font-weight:600;color:var(--accent2);letter-spacing:.06em;padding:16px 14px 6px;}
+
+  /* input */
+  .date-row{display:flex;align-items:center;gap:10px;padding:14px;}
+  .date-row label{font-size:13px;color:var(--text2);white-space:nowrap;}
+  .date-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;padding:9px 12px;-webkit-appearance:none;}
+  .date-input:focus{outline:none;border-color:var(--accent);}
+  .metric-row{display:flex;align-items:center;padding:0 14px;min-height:52px;border-bottom:1px solid var(--border);}
+  .metric-row:last-child{border-bottom:none;}
+  .metric-name{flex:1;font-size:14px;}
+  .metric-unit{font-size:11px;color:var(--text3);margin-right:8px;}
+  .counter-wrap{display:flex;align-items:center;}
+  .cnt-btn{width:36px;height:36px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;line-height:1;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:300;flex-shrink:0;}
+  .cnt-val input{width:68px;text-align:center;background:transparent;border:none;color:var(--text);font-size:16px;font-weight:600;outline:none;font-variant-numeric:tabular-nums;}
+  .save-btn-wrap{position:fixed;bottom:var(--tab-h);left:0;right:0;padding:10px 14px;background:var(--bg);border-top:1px solid var(--border);z-index:99;}
+  .save-btn{width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;height:50px;font-size:16px;font-weight:700;cursor:pointer;}
+  .save-btn:active{filter:brightness(.85);}
+  .inp-hint{font-size:11px;color:var(--text3);padding:0 14px 10px;line-height:1.6;}
+
+  /* history */
+  .cal-header{display:flex;align-items:center;justify-content:space-between;padding:14px;}
+  .cal-month{font-size:16px;font-weight:700;cursor:pointer;}
+  .cal-nav{background:none;border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 10px 10px;}
+  .cal-dow{text-align:center;font-size:11px;color:var(--text3);padding:4px 0;font-weight:600;}
+  .cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px;cursor:pointer;}
+  .cal-day.has-data{background:var(--surface2);color:var(--accent);font-weight:700;}
+  .cal-day.today{border:1px solid var(--accent2);}
+  .cal-day.other-month{color:var(--text3);}
+  .detail-box{background:var(--surface2);border-radius:10px;margin:0 14px 14px;padding:12px 14px;}
+  .detail-box h3{font-size:14px;font-weight:700;margin-bottom:10px;}
+  .detail-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);}
+  .detail-row:last-child{border-bottom:none;}
+  .detail-key{font-size:13px;color:var(--text2);}
+  .detail-vals{display:flex;gap:12px;}
+  .detail-val{font-size:13px;font-variant-numeric:tabular-nums;font-weight:600;}
+  .diff-pos{color:var(--ok);font-size:12px;}
+  .diff-neg{color:var(--danger);font-size:12px;}
+  .diff-zero{color:var(--text3);font-size:12px;}
+  .summary-box{background:var(--surface2);border-radius:10px;margin:0 14px 14px;padding:12px 14px;}
+  .summary-box h3{font-size:14px;font-weight:700;margin-bottom:10px;}
+  .sum-row{display:flex;flex-direction:column;padding:6px 0;border-bottom:1px solid var(--border);}
+  .sum-row:last-child{border-bottom:none;}
+  .sum-row-top{display:flex;justify-content:space-between;align-items:center;}
+  .sum-key{font-size:13px;}
+  .sum-right{display:flex;gap:8px;align-items:center;}
+  .sum-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .sum-pct{font-size:11px;color:var(--text2);}
+  .sum-remain{font-size:11px;color:var(--warn);}
+  .sum-over{font-size:11px;color:var(--ok);}
+  .pbar{height:3px;background:var(--border);border-radius:2px;margin-top:4px;}
+  .pbar-fill{height:100%;border-radius:2px;}
+
+  /* analysis */
+  .analysis-item{padding:12px 14px;border-bottom:1px solid var(--border);}
+  .analysis-item:last-child{border-bottom:none;}
+  .analysis-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .analysis-name{font-size:14px;font-weight:700;}
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;}
+  .badge.red{background:rgba(239,68,68,.2);color:var(--danger);}
+  .badge.yellow{background:rgba(245,158,11,.2);color:var(--warn);}
+  .badge.green{background:rgba(34,197,94,.15);color:var(--ok);}
+  .analysis-stats{display:flex;gap:12px;font-size:12px;color:var(--text2);flex-wrap:wrap;}
+  .analysis-pbar{margin-top:6px;height:4px;background:var(--border);border-radius:2px;}
+  .analysis-pbar-fill{height:100%;border-radius:2px;}
+
+  /* LINE */
+  .line-preview{background:var(--surface2);border-radius:10px;margin:0 14px;padding:14px;white-space:pre-wrap;font-size:14px;line-height:1.9;font-family:monospace;color:var(--text);}
+  .copy-btn{width:calc(100% - 28px);margin:12px 14px;background:#06c755;color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
+  .copy-btn:active{filter:brightness(.85);}
+  .copy-toast{text-align:center;font-size:13px;color:var(--ok);padding:4px;min-height:24px;}
+
+  /* settings */
+  .setting-row{display:flex;align-items:center;padding:0 14px;min-height:48px;border-bottom:1px solid var(--border);}
+  .setting-row:last-child{border-bottom:none;}
+  .setting-name{flex:1;font-size:14px;}
+  .setting-unit{font-size:11px;color:var(--text3);margin-right:8px;}
+  .setting-input{width:80px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:15px;text-align:right;padding:7px 10px;border-radius:8px;}
+  .setting-input:focus{outline:none;border-color:var(--accent);}
+  .settings-save-btn{width:calc(100% - 28px);margin:8px 14px 14px;background:var(--accent);color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
+  .settings-save-btn:active{filter:brightness(.85);}
+  .info-chip{font-size:11px;color:var(--accent2);background:rgba(99,102,241,.12);border-radius:6px;padding:2px 7px;margin-left:6px;}
+  .empty-msg{text-align:center;color:var(--text3);font-size:14px;padding:32px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <h1>セルナビ</h1>
+    <span class="header-sub" id="header-period"></span>
+  </div>
+  <div class="content" id="content">
+    <div class="page active" id="page-input"></div>
+    <div class="page" id="page-history"></div>
+    <div class="page" id="page-analysis"></div>
+    <div class="page" id="page-line"></div>
+    <div class="page" id="page-settings"></div>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="input" onclick="switchTab('input')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+      入力
+    </button>
+    <button class="tab-btn" data-tab="history" onclick="switchTab('history')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      履歴
+    </button>
+    <button class="tab-btn" data-tab="analysis" onclick="switchTab('analysis')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20l5-8 4 4 5-8 4 4"/></svg>
+      分析
+    </button>
+    <button class="tab-btn" data-tab="line" onclick="switchTab('line')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5C21 16.75 16.25 21 12 21c-1.5 0-3.5-.5-5-1.5L3 21l1.5-4C3.5 15.5 3 13.5 3 11.5 3 6.25 7.75 2 12 2s9 4.25 9 9.5z"/></svg>
+      LINE
+    </button>
+    <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      設定
+    </button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// ユーティリティ
+// ══════════════════════════════════════════
+function fmt(v) {
+  if (v===null||v===undefined) return '0';
+  const n=parseFloat(v);
+  if (isNaN(n)) return '0';
+  return parseFloat(n.toFixed(1)).toString();
+}
+function parseVal(s) {
+  const n=parseFloat(s);
+  return isNaN(n)?0:Math.max(0,parseFloat(n.toFixed(1)));
+}
+
+// ══════════════════════════════════════════
+// DATA MODEL
+// ══════════════════════════════════════════
+// データ構造：
+// {
+//   "2025-06-20": { shinki:150, kishu:120, ... },  ← 各日の「その時点の累計実績」
+//   "2025-06-22": { shinki:160, kishu:135, ... },  ← 最新値で上書き
+// }
+// 集計時は各月の「最も新しい日付のデータ」を使う
+
+const METRICS = [
+  { key:'shinki',   name:'新規',      unit:'台', monthly:true  },
+  { key:'ltv',      name:'LTV',       unit:'pt', monthly:true  },
+  { key:'kishu',    name:'機種変更',   unit:'台', monthly:false },
+  { key:'celup',    name:'セルアップ', unit:'台', monthly:false },
+  { key:'tab',      name:'タブ',       unit:'件', monthly:false },
+  { key:'nw',       name:'NW',         unit:'点', monthly:false },
+  { key:'wimax',    name:'WiMAX',      unit:'台', monthly:false },
+  { key:'denki',    name:'でんき',     unit:'件', monthly:false },
+  { key:'kurekka',  name:'クレカ',     unit:'件', monthly:false },
+  { key:'gold',     name:'内ゴールド', unit:'件', monthly:false },
+  { key:'jibun',    name:'じぶん銀行', unit:'件', monthly:false },
+  { key:'setai',    name:'世帯商材',   unit:'件', monthly:false },
+  { key:'kojin',    name:'個人商材',   unit:'件', monthly:false },
+  { key:'certified',name:'certified',  unit:'台', monthly:false },
+];
+
+const DEFAULT_TARGETS = {
+  shinki:540, ltv:null, kishu:340, celup:80, tab:4,
+  nw:230, wimax:6, denki:10, kurekka:45, gold:20,
+  jibun:25, setai:10, kojin:95, certified:5
+};
+
+const QUARTERS = [
+  { name:'Q1', months:[5,6,7]  },
+  { name:'Q2', months:[8,9,10] },
+  { name:'Q3', months:[11,0,1] },
+  { name:'Q4', months:[2,3,4]  },
+];
+
+function getQuarter(year,month) {
+  for (const q of QUARTERS) { if (q.months.includes(month)) return q; }
+  return null;
+}
+function getQuarterMonths(year,month) {
+  const q=getQuarter(year,month);
+  if (!q) return [];
+  return q.months.map(m => {
+    let y=year;
+    if (month<=1&&m>=11) y=year-1;
+    if (month>=11&&m<=1) y=year+1;
+    return {year:y,month:m};
+  });
+}
+function getElapsedMonthsInQuarter(year,month) {
+  const q=getQuarter(year,month);
+  if (!q) return 1;
+  return q.months.indexOf(month)+1;
+}
+
+function loadData() { try{return JSON.parse(localStorage.getItem('sellnavi_data')||'{}')}catch{return{}} }
+function saveData(data) { localStorage.setItem('sellnavi_data',JSON.stringify(data)); }
+function loadTargets() { try{return JSON.parse(localStorage.getItem('sellnavi_targets')||'null')||{...DEFAULT_TARGETS}}catch{return{...DEFAULT_TARGETS}} }
+function saveTargets(t) { localStorage.setItem('sellnavi_targets',JSON.stringify(t)); }
+
+function dateKey(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+// ══════════════════════════════════════════
+// 集計ロジック（最新値上書き方式）
+// ──────────────────────────────────────────
+// 各月の「最も新しい日付のエントリ」の値を
+// その月の実績として使う
+// ══════════════════════════════════════════
+
+// 指定月の最新実績を返す（その月のデータがなければ全0）
+function getMonthLatest(data, year, month) {
+  const prefix = `${year}-${String(month+1).padStart(2,'0')}`;
+  // その月の全エントリを取得してソート
+  const keys = Object.keys(data).filter(k=>k.startsWith(prefix)).sort();
+  const empty = {};
+  METRICS.forEach(m=>empty[m.key]=0);
+  if (!keys.length) return empty;
+  // 最新日付の値を返す
+  return {...empty, ...data[keys[keys.length-1]]};
+}
+
+// 四半期の集計：
+// - 単月項目（新規・LTV）：当月最新値のみ
+// - 四半期項目：前月までの最終値 + 今月の最新値
+function getQuarterActual(data, year, month) {
+  const q = getQuarter(year, month);
+  if (!q) return getMonthLatest(data, year, month);
+
+  const result = {};
+  METRICS.forEach(m=>result[m.key]=0);
+
+  q.months.forEach((mo, idx) => {
+    let y = year;
+    if (month<=1&&mo>=11) y=year-1;
+    if (month>=11&&mo<=1) y=year+1;
+
+    // 現在月より後の月はスキップ
+    const thisMk = y*100+mo;
+    const curMk = year*100+month;
+    if (thisMk > curMk) return;
+
+    const latest = getMonthLatest(data, y, mo);
+    METRICS.forEach(m => {
+      if (m.monthly) {
+        // 単月項目は当月のみ
+        if (y===year && mo===month) result[m.key] = latest[m.key]||0;
+      } else {
+        // 四半期項目は各月の最新値を足す
+        result[m.key] = parseFloat((result[m.key] + (latest[m.key]||0)).toFixed(1));
+      }
+    });
+  });
+
+  return result;
+}
+
+function getPeriodLabel(year,month) {
+  const q=getQuarter(year,month);
+  const now=new Date();
+  const label=(now.getFullYear()===year&&now.getMonth()===month)?'今月':`${month+1}月`;
+  return q?`${label} / ${q.name}`:label;
+}
+
+function remainLabel(actual,totalTarget,unit) {
+  if (totalTarget===null||totalTarget===undefined) return `${fmt(actual)}${unit}`;
+  const diff=parseFloat((actual-totalTarget).toFixed(1));
+  if (diff>0) return `+${fmt(diff)}${unit}`;
+  if (diff===0) return '達成';
+  return `残${fmt(totalTarget-actual)}${unit}`;
+}
+
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let currentTab='input';
+let historyYear=new Date().getFullYear();
+let historyMonth=new Date().getMonth();
+let historySelectedDate=null;
+let historyShowSummary=false;
+let inputValues={};
+METRICS.forEach(m=>inputValues[m.key]=0);
+const today=new Date();
+let inputDate=dateKey(today.getFullYear(),today.getMonth(),today.getDate());
+
+// ══════════════════════════════════════════
+// TAB
+// ══════════════════════════════════════════
+function switchTab(tab) {
+  currentTab=tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${tab}`));
+  document.getElementById('content').scrollTop=0;
+  // 固定保存ボタンは入力タブ以外は非表示
+  const fixedBtn=document.getElementById('fixed-save-btn');
+  if(fixedBtn) fixedBtn.style.display=tab==='input'?'block':'none';
+  if(tab==='input') renderInput();
+  if(tab==='history') renderHistory();
+  if(tab==='analysis') renderAnalysis();
+  if(tab==='line') renderLine();
+  if(tab==='settings') renderSettings();
+  updateHeader();
+}
+function updateHeader() {
+  const now=new Date();
+  document.getElementById('header-period').textContent=getPeriodLabel(now.getFullYear(),now.getMonth());
+}
+
+// ══════════════════════════════════════════
+// INPUT PAGE
+// ══════════════════════════════════════════
+function renderInput() {
+  const data=loadData();
+  // 選択日付のデータを読み込み（なければ最新日付の値を初期値に）
+  if (data[inputDate]) {
+    METRICS.forEach(m=>{inputValues[m.key]=parseFloat(data[inputDate][m.key])||0;});
+  } else {
+    // その月の最新値を初期値として表示
+    const [y,mo]=inputDate.split('-').map(Number);
+    const latest=getMonthLatest(data,y,mo-1);
+    METRICS.forEach(m=>{inputValues[m.key]=latest[m.key]||0;});
+  }
+
+  const el=document.getElementById('page-input');
+  el.innerHTML=`
+    <div class="card">
+      <div class="date-row">
+        <label>日付</label>
+        <input type="date" class="date-input" id="inp-date" value="${inputDate}" onchange="onDateChange(this.value)">
+      </div>
+    </div>
+    <div class="section-label">単月管理</div>
+    <div class="inp-hint">※ 今日までの累計実績をそのまま入力してください</div>
+    <div class="card">
+      ${METRICS.filter(m=>m.monthly).map(m=>metricRowHTML(m)).join('')}
+    </div>
+    <div class="section-label">四半期管理</div>
+    <div class="inp-hint">※ 今月分の累計実績をそのまま入力してください</div>
+    <div class="card">
+      ${METRICS.filter(m=>!m.monthly).map(m=>metricRowHTML(m)).join('')}
+    </div>
+    <div style="height:140px"></div>
+  `;
+  // 固定保存ボタン
+  let fixedBtn=document.getElementById('fixed-save-btn');
+  if(!fixedBtn){
+    fixedBtn=document.createElement('div');
+    fixedBtn.id='fixed-save-btn';
+    fixedBtn.className='save-btn-wrap';
+    fixedBtn.innerHTML='<button class="save-btn" onclick="saveInput()">保存</button>';
+    document.body.appendChild(fixedBtn);
+  }
+  fixedBtn.style.display='block';
+}
+
+function metricRowHTML(m) {
+  const v=fmt(inputValues[m.key]||0);
+  return `
+    <div class="metric-row">
+      <span class="metric-name">${m.name}</span>
+      <span class="metric-unit">${m.unit}</span>
+      <div class="counter-wrap">
+        <button class="cnt-btn" onclick="changeVal('${m.key}',-1)">−</button>
+        <div class="cnt-val">
+          <input type="number" id="inp-${m.key}" value="${v}" min="0" step="0.1"
+            inputmode="decimal" pattern="[0-9]*\\.?[0-9]*"
+            onchange="onValInput('${m.key}',this.value)"
+            onblur="onValInput('${m.key}',this.value)">
+        </div>
+        <button class="cnt-btn" onclick="changeVal('${m.key}',1)">＋</button>
+      </div>
+    </div>`;
+}
+
+function onDateChange(val) {
+  inputDate=val;
+  renderInput();
+}
+function changeVal(key,delta) {
+  const inp=document.getElementById(`inp-${key}`);
+  const cur=parseVal(inp.value);
+  const next=parseVal((cur+delta).toFixed(1));
+  inp.value=fmt(next);
+  inputValues[key]=next;
+}
+function onValInput(key,val) {
+  inputValues[key]=parseVal(val);
+  const inp=document.getElementById(`inp-${key}`);
+  if(inp) inp.value=fmt(inputValues[key]);
+}
+function saveInput() {
+  METRICS.forEach(m=>{
+    const el=document.getElementById(`inp-${m.key}`);
+    if(el) inputValues[m.key]=parseVal(el.value);
+  });
+  const data=loadData();
+  data[inputDate]={};
+  METRICS.forEach(m=>{data[inputDate][m.key]=inputValues[m.key];});
+  saveData(data);
+  showToast('保存しました ✓');
+}
+function showToast(msg) {
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#22c55e;color:#fff;padding:10px 20px;border-radius:24px;font-size:14px;font-weight:700;z-index:999;pointer-events:none;';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+}
+
+// ══════════════════════════════════════════
+// HISTORY PAGE
+// ══════════════════════════════════════════
+const DOWS=['日','月','火','水','木','金','土'];
+const MONTHS_JP=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+function renderHistory() {
+  const el=document.getElementById('page-history');
+  const data=loadData();
+  const now=new Date();
+  const firstDay=new Date(historyYear,historyMonth,1).getDay();
+  const daysInMonth=new Date(historyYear,historyMonth+1,0).getDate();
+  const daysInPrev=new Date(historyYear,historyMonth,0).getDate();
+  let daysCells='';
+  for(let i=firstDay-1;i>=0;i--) daysCells+=`<div class="cal-day other-month">${daysInPrev-i}</div>`;
+  for(let d=1;d<=daysInMonth;d++) {
+    const dk=dateKey(historyYear,historyMonth,d);
+    const hasData=!!data[dk];
+    const isToday=now.getFullYear()===historyYear&&now.getMonth()===historyMonth&&now.getDate()===d;
+    const isSelected=historySelectedDate===dk;
+    daysCells+=`<div class="cal-day${hasData?' has-data':''}${isToday?' today':''}" style="${isSelected?'background:var(--accent);color:#fff;':''}" onclick="selectDay('${dk}')">${d}</div>`;
+  }
+  const total=Math.ceil((firstDay+daysInMonth)/7)*7;
+  for(let i=1;i<=total-firstDay-daysInMonth;i++) daysCells+=`<div class="cal-day other-month">${i}</div>`;
+  let summaryHTML=historyShowSummary?buildMonthlySummaryHTML(data,historyYear,historyMonth):'';
+  let detailHTML=(historySelectedDate&&data[historySelectedDate])?buildDetailHTML(data,historySelectedDate):'';
+  el.innerHTML=`
+    <div class="card">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="changeHistoryMonth(-1)">‹</button>
+        <span class="cal-month" onclick="toggleSummary()">${historyYear}年 ${MONTHS_JP[historyMonth]} ▾</span>
+        <button class="cal-nav" onclick="changeHistoryMonth(1)">›</button>
+      </div>
+      <div class="cal-grid">
+        ${DOWS.map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+        ${daysCells}
+      </div>
+    </div>
+    ${summaryHTML}${detailHTML}
+    <div style="height:8px"></div>`;
+}
+
+function changeHistoryMonth(delta) {
+  historyMonth+=delta;
+  if(historyMonth<0){historyMonth=11;historyYear--;}
+  if(historyMonth>11){historyMonth=0;historyYear++;}
+  historySelectedDate=null;historyShowSummary=false;
+  renderHistory();
+}
+function toggleSummary(){historyShowSummary=!historyShowSummary;historySelectedDate=null;renderHistory();}
+function selectDay(dk){historySelectedDate=historySelectedDate===dk?null:dk;historyShowSummary=false;renderHistory();}
+
+function buildDetailHTML(data,dk) {
+  const dayData=data[dk];
+  const dateObj=new Date(dk+'T00:00:00');
+  const label=`${dateObj.getMonth()+1}/${dateObj.getDate()}（${DOWS[dateObj.getDay()]}）`;
+  // 前回の入力日を探す
+  const sortedKeys=Object.keys(data).filter(k=>k<dk).sort();
+  const prevKey=sortedKeys.length?sortedKeys[sortedKeys.length-1]:null;
+  const prevData=prevKey?data[prevKey]:null;
+  const rows=METRICS.map(m=>{
+    const val=parseFloat(dayData[m.key])||0;
+    let diffHTML='';
+    if(prevData!==null){
+      const prev=parseFloat(prevData[m.key])||0;
+      const diff=parseFloat((val-prev).toFixed(1));
+      if(diff>0) diffHTML=`<span class="diff-pos">+${fmt(diff)}</span>`;
+      else if(diff<0) diffHTML=`<span class="diff-neg">${fmt(diff)}</span>`;
+      else diffHTML=`<span class="diff-zero">ー</span>`;
+    }
+    return `<div class="detail-row">
+      <span class="detail-key">${m.name}</span>
+      <div class="detail-vals">
+        ${diffHTML}
+        <span class="detail-val">${fmt(val)}<small style="font-size:10px;color:var(--text3);font-weight:400"> ${m.unit}</small></span>
+      </div>
+    </div>`;
+  }).join('');
+  const prevLabel=prevKey?`前回：${prevKey.replace(/-/g,'/')}`:'';
+  return `<div class="detail-box">
+    <h3>${label} の実績 <small style="font-size:11px;color:var(--text3)">${prevLabel}</small></h3>
+    ${rows}
+  </div>`;
+}
+
+function buildMonthlySummaryHTML(data,year,month) {
+  const targets=loadTargets();
+  const elapsed=getElapsedMonthsInQuarter(year,month);
+  const q=getQuarter(year,month);
+  const actual=getQuarterActual(data,year,month);
+
+  const rows=METRICS.map(m=>{
+    const val=actual[m.key]||0;
+    const target=targets[m.key];
+    if(target===null||target===undefined){
+      return `<div class="sum-row"><div class="sum-row-top"><span class="sum-key">${m.name}</span><div class="sum-right"><span class="sum-val">${fmt(val)}${m.unit}</span><span class="sum-pct">目標なし</span></div></div></div>`;
+    }
+    const totalTarget=m.monthly?target:target*elapsed;
+    const pct=totalTarget>0?val/totalTarget*100:0;
+    const diff=parseFloat((val-totalTarget).toFixed(1));
+    const remain=parseFloat((totalTarget-val).toFixed(1));
+    const avg=elapsed>0?parseFloat((val/elapsed).toFixed(1)):val;
+    const fillColor=pct>=100?'var(--ok)':pct>=70?'var(--warn)':'var(--danger)';
+    let remainEl='';
+    if(diff>0) remainEl=`<span class="sum-over">+${fmt(diff)}${m.unit}</span>`;
+    else if(remain===0) remainEl=`<span class="sum-over">達成</span>`;
+    else remainEl=`<span class="sum-remain">残${fmt(remain)}${m.unit}</span>`;
+    return `<div class="sum-row">
+      <div class="sum-row-top">
+        <span class="sum-key">${m.name}</span>
+        <div class="sum-right">${remainEl}<span class="sum-val">${fmt(val)}/${fmt(totalTarget)}</span><span class="sum-pct">${Math.round(pct)}%</span></div>
+      </div>
+      <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${fillColor}"></div></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">平均 ${fmt(avg)}${m.unit}${!m.monthly?` / 月（${elapsed}ヶ月）`:''}</div>
+    </div>`;
+  }).join('');
+  const qLabel=q?` / ${q.name}（${elapsed}ヶ月目）`:'';
+  return `<div class="summary-box"><h3>${MONTHS_JP[month]} サマリー${qLabel}</h3>${rows}</div>`;
+}
+
+// ══════════════════════════════════════════
+// ANALYSIS PAGE
+// ══════════════════════════════════════════
+function renderAnalysis() {
+  const el=document.getElementById('page-analysis');
+  const data=loadData();
+  const targets=loadTargets();
+  const now=new Date();
+  const year=now.getFullYear(),month=now.getMonth();
+  const elapsed=getElapsedMonthsInQuarter(year,month);
+  const actual=getQuarterActual(data,year,month);
+
+  const items=METRICS.filter(m=>targets[m.key]!==null&&targets[m.key]!==undefined).map(m=>{
+    const val=actual[m.key]||0;
+    const totalTarget=m.monthly?targets[m.key]:targets[m.key]*elapsed;
+    const pct=totalTarget>0?val/totalTarget*100:0;
+    const diff=parseFloat((val-totalTarget).toFixed(1));
+    const remain=parseFloat((totalTarget-val).toFixed(1));
+    const avg=elapsed>0?parseFloat((val/elapsed).toFixed(1)):val;
+    return {...m,actual:val,totalTarget,pct,diff,remain,avg};
+  }).sort((a,b)=>a.pct-b.pct);
+
+  const cards=items.map(item=>{
+    const pct=Math.round(item.pct);
+    let badgeClass='red',badgeLabel='要注意',fillColor='var(--danger)';
+    if(pct>=100){badgeClass='green';badgeLabel='達成';fillColor='var(--ok)';}
+    else if(pct>=70){badgeClass='yellow';badgeLabel='注意';fillColor='var(--warn)';}
+    let remainText='';
+    if(item.diff>0) remainText=`<b style="color:var(--ok)">+${fmt(item.diff)}${item.unit}</b>`;
+    else if(item.remain===0) remainText=`<b style="color:var(--ok)">達成</b>`;
+    else remainText=`<b style="color:var(--warn)">残${fmt(item.remain)}${item.unit}</b>`;
+    return `<div class="analysis-item">
+      <div class="analysis-head"><span class="analysis-name">${item.name}</span><span class="badge ${badgeClass}">${badgeLabel}</span></div>
+      <div class="analysis-stats">
+        <span>実績 <b>${fmt(item.actual)}${item.unit}</b></span>
+        <span>${remainText}</span>
+        <span>平均 <b>${fmt(item.avg)}${item.unit}</b></span>
+        <span>進捗 <b>${pct}%</b></span>
+      </div>
+      <div class="analysis-pbar"><div class="analysis-pbar-fill" style="width:${Math.min(pct,100)}%;background:${fillColor}"></div></div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="section-label" style="padding-bottom:4px">今月 / ${getQuarter(year,month)?.name||''}（${elapsed}ヶ月目）― 危険度順</div>
+    <div class="card">${cards||'<div class="empty-msg">データなし</div>'}</div>
+    <div style="height:8px"></div>`;
+}
+
+// ══════════════════════════════════════════
+// LINE PAGE
+// ══════════════════════════════════════════
+function renderLine() {
+  const el=document.getElementById('page-line');
+  const text=buildLineText();
+  el.innerHTML=`
+    <div class="section-label">LINE 共有テキスト</div>
+    <div class="line-preview">${escHtml(text)}</div>
+    <button class="copy-btn" onclick="copyLine()">📋 コピー</button>
+    <div class="copy-toast" id="copy-toast"></div>
+    <div style="height:8px"></div>`;
+}
+
+function buildLineText() {
+  const data=loadData();
+  const targets=loadTargets();
+  const now=new Date();
+  const year=now.getFullYear(),month=now.getMonth(),day=now.getDate();
+  const dow=DOWS[now.getDay()];
+  const elapsed=getElapsedMonthsInQuarter(year,month);
+  const actual=getQuarterActual(data,year,month);
+  const lines=[`お疲れ様です`,`セルナビの実績共有です`,``,`${month+1}月${day}日（${dow}）`,``];
+  METRICS.forEach(m=>{
+    const target=targets[m.key];
+    const val=actual[m.key]||0;
+    const totalTarget=(target!==null&&target!==undefined)?(m.monthly?target:target*elapsed):null;
+    lines.push(`${m.name}　${remainLabel(val,totalTarget,m.unit)}`);
+  });
+  return lines.join('\n');
+}
+
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function copyLine(){
+  const text=buildLineText();
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(showCopyToast).catch(()=>fallbackCopy(text));
+  else fallbackCopy(text);
+}
+function fallbackCopy(text){
+  const ta=document.createElement('textarea');
+  ta.value=text;ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');showCopyToast();}catch{}
+  document.body.removeChild(ta);
+}
+function showCopyToast(){
+  const el=document.getElementById('copy-toast');
+  if(el){el.textContent='コピーしました ✓';setTimeout(()=>{if(el)el.textContent='';},2000);}
+}
+
+// ══════════════════════════════════════════
+// SETTINGS PAGE
+// ══════════════════════════════════════════
+function renderSettings() {
+  const targets=loadTargets();
+  const el=document.getElementById('page-settings');
+  const rows=METRICS.map(m=>{
+    const chip=m.monthly?'<span class="info-chip">単月</span>':'<span class="info-chip">四半期</span>';
+    if(targets[m.key]===null){
+      return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span style="font-size:12px;color:var(--text3)">目標なし</span></div>`;
+    }
+    return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="number" class="setting-input" id="set-${m.key}" value="${targets[m.key]}" inputmode="numeric" min="0"></div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="section-label">目標値設定</div>
+    <div class="card">${rows}</div>
+    <button class="settings-save-btn" onclick="saveSettings()">保存</button>
+    <div style="height:8px"></div>`;
+}
+function saveSettings(){
+  const targets=loadTargets();
+  METRICS.forEach(m=>{const inp=document.getElementById(`set-${m.key}`);if(inp) targets[m.key]=parseFloat(inp.value)||0;});
+  saveTargets(targets);
+  showToast('目標を保存しました ✓');
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+updateHeader();
+renderInput();
+</script>
+</body>
+</html>
