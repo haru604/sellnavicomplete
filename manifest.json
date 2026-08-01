@@ -1,10 +1,10 @@
 {
-  "id": "./",
+  "id": "/sellnavicomplete/",
   "name": "セルナビ",
   "short_name": "セルナビ",
   "description": "店舗実績を入力・分析・共有できるセルナビ",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/sellnavicomplete/",
+  "scope": "/sellnavicomplete/",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
   "background_color": "#0d0f14",
@@ -12,7 +12,17 @@
   "orientation": "portrait-primary",
   "categories": ["business", "productivity"],
   "icons": [
-    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
-    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"}
+    {
+      "src": "/sellnavicomplete/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/sellnavicomplete/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
