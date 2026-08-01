@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="セルナビ">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0d0f14">
-<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgcng9IjI0IiBmaWxsPSIjMTYxYTIzIi8+PHRleHQgeD0iNjQiIHk9Ijg0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwgQmxhY2ssc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSI1NiIgZmlsbD0iIzNiODJmNiI+U048L3RleHQ+PC9zdmc+">
+<meta name="description" content="店舗実績を入力・分析・共有できるセルナビ">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
 <style>
   :root {
     --bg:#0d0f14;--surface:#161a23;--surface2:#1e2330;--border:#2a3045;
@@ -163,8 +165,17 @@ function fmt(v) {
   return parseFloat(n.toFixed(1)).toString();
 }
 function parseVal(s) {
-  const n=parseFloat(s);
+  const normalized=String(s??'').replace(/,/g,'').trim();
+  const n=parseFloat(normalized);
   return isNaN(n)?0:Math.max(0,parseFloat(n.toFixed(1)));
+}
+function isMoneyMetric(metricOrKey) {
+  const key=typeof metricOrKey==='string'?metricOrKey:metricOrKey?.key;
+  return key==='paidSupport'||key==='plus1Collection';
+}
+function fmtMetric(v,metricOrKey) {
+  const base=fmt(v);
+  return isMoneyMetric(metricOrKey)?Number(base).toLocaleString('ja-JP'):base;
 }
 
 // ══════════════════════════════════════════
@@ -180,6 +191,9 @@ function parseVal(s) {
 const METRICS = [
   { key:'shinki',   name:'新規',      unit:'台', monthly:true  },
   { key:'ltv',      name:'LTV',       unit:'pt', monthly:true  },
+  { key:'supportFlat', name:'サポート定額', unit:'件', monthly:true },
+  { key:'paidSupport', name:'有償サポート', unit:'円', monthly:true },
+  { key:'plus1Collection', name:'+1Collection', unit:'円', monthly:true },
   { key:'kishu',    name:'機種変更',   unit:'台', monthly:false },
   { key:'celup',    name:'セルアップ', unit:'台', monthly:false },
   { key:'tab',      name:'タブ',       unit:'件', monthly:false },
@@ -195,7 +209,7 @@ const METRICS = [
 ];
 
 const DEFAULT_TARGETS = {
-  shinki:540, ltv:null, kishu:340, celup:80, tab:4,
+  shinki:540, ltv:null, supportFlat:60, paidSupport:300000, plus1Collection:4000000, kishu:340, celup:80, tab:4,
   nw:230, wimax:6, denki:10, kurekka:45, gold:20,
   jibun:25, setai:10, kojin:95, certified:5
 };
@@ -229,7 +243,7 @@ function getElapsedMonthsInQuarter(year,month) {
 
 function loadData() { try{return JSON.parse(localStorage.getItem('sellnavi_data')||'{}')}catch{return{}} }
 function saveData(data) { localStorage.setItem('sellnavi_data',JSON.stringify(data)); }
-function loadTargets() { try{return JSON.parse(localStorage.getItem('sellnavi_targets')||'null')||{...DEFAULT_TARGETS}}catch{return{...DEFAULT_TARGETS}} }
+function loadTargets() { try{const saved=JSON.parse(localStorage.getItem('sellnavi_targets')||'null')||{};return {...DEFAULT_TARGETS,...saved}}catch{return{...DEFAULT_TARGETS}} }
 function saveTargets(t) { localStorage.setItem('sellnavi_targets',JSON.stringify(t)); }
 
 function dateKey(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
@@ -295,12 +309,12 @@ function getPeriodLabel(year,month) {
   return q?`${label} / ${q.name}`:label;
 }
 
-function remainLabel(actual,totalTarget,unit) {
-  if (totalTarget===null||totalTarget===undefined) return `${fmt(actual)}${unit}`;
+function remainLabel(actual,totalTarget,unit,metric) {
+  if (totalTarget===null||totalTarget===undefined) return `${fmtMetric(actual,metric)}${unit}`;
   const diff=parseFloat((actual-totalTarget).toFixed(1));
-  if (diff>0) return `+${fmt(diff)}${unit}`;
+  if (diff>0) return `+${fmtMetric(diff,metric)}${unit}`;
   if (diff===0) return '達成';
-  return `残${fmt(totalTarget-actual)}${unit}`;
+  return `残${fmtMetric(totalTarget-actual,metric)}${unit}`;
 }
 
 // ══════════════════════════════════════════
@@ -387,20 +401,23 @@ function renderInput() {
 }
 
 function metricRowHTML(m) {
-  const v=fmt(inputValues[m.key]||0);
+  const money=isMoneyMetric(m);
+  const v=fmtMetric(inputValues[m.key]||0,m);
+  const step=money?10000:1;
   return `
     <div class="metric-row">
       <span class="metric-name">${m.name}</span>
       <span class="metric-unit">${m.unit}</span>
       <div class="counter-wrap">
-        <button class="cnt-btn" onclick="changeVal('${m.key}',-1)">−</button>
+        <button class="cnt-btn" onclick="changeVal('${m.key}',-${step})">−</button>
         <div class="cnt-val">
-          <input type="number" id="inp-${m.key}" value="${v}" min="0" step="0.1"
-            inputmode="decimal" pattern="[0-9]*\\.?[0-9]*"
+          <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" min="0" step="${money?10000:0.1}"
+            inputmode="${money?'numeric':'decimal'}"
+            onfocus="onValFocus('${m.key}',this)"
             onchange="onValInput('${m.key}',this.value)"
             onblur="onValInput('${m.key}',this.value)">
         </div>
-        <button class="cnt-btn" onclick="changeVal('${m.key}',1)">＋</button>
+        <button class="cnt-btn" onclick="changeVal('${m.key}',${step})">＋</button>
       </div>
     </div>`;
 }
@@ -413,13 +430,16 @@ function changeVal(key,delta) {
   const inp=document.getElementById(`inp-${key}`);
   const cur=parseVal(inp.value);
   const next=parseVal((cur+delta).toFixed(1));
-  inp.value=fmt(next);
+  inp.value=fmtMetric(next,key);
   inputValues[key]=next;
+}
+function onValFocus(key,inp) {
+  if(isMoneyMetric(key)) inp.value=String(parseVal(inp.value));
 }
 function onValInput(key,val) {
   inputValues[key]=parseVal(val);
   const inp=document.getElementById(`inp-${key}`);
-  if(inp) inp.value=fmt(inputValues[key]);
+  if(inp) inp.value=fmtMetric(inputValues[key],key);
 }
 function saveInput() {
   METRICS.forEach(m=>{
@@ -514,7 +534,7 @@ function buildDetailHTML(data,dk) {
       <span class="detail-key">${m.name}</span>
       <div class="detail-vals">
         ${diffHTML}
-        <span class="detail-val">${fmt(val)}<small style="font-size:10px;color:var(--text3);font-weight:400"> ${m.unit}</small></span>
+        <span class="detail-val">${fmtMetric(val,m)}<small style="font-size:10px;color:var(--text3);font-weight:400"> ${m.unit}</small></span>
       </div>
     </div>`;
   }).join('');
@@ -535,7 +555,7 @@ function buildMonthlySummaryHTML(data,year,month) {
     const val=actual[m.key]||0;
     const target=targets[m.key];
     if(target===null||target===undefined){
-      return `<div class="sum-row"><div class="sum-row-top"><span class="sum-key">${m.name}</span><div class="sum-right"><span class="sum-val">${fmt(val)}${m.unit}</span><span class="sum-pct">目標なし</span></div></div></div>`;
+      return `<div class="sum-row"><div class="sum-row-top"><span class="sum-key">${m.name}</span><div class="sum-right"><span class="sum-val">${fmtMetric(val,m)}${m.unit}</span><span class="sum-pct">目標なし</span></div></div></div>`;
     }
     const totalTarget=m.monthly?target:target*elapsed;
     const pct=totalTarget>0?val/totalTarget*100:0;
@@ -544,16 +564,16 @@ function buildMonthlySummaryHTML(data,year,month) {
     const avg=elapsed>0?parseFloat((val/elapsed).toFixed(1)):val;
     const fillColor=pct>=100?'var(--ok)':pct>=70?'var(--warn)':'var(--danger)';
     let remainEl='';
-    if(diff>0) remainEl=`<span class="sum-over">+${fmt(diff)}${m.unit}</span>`;
+    if(diff>0) remainEl=`<span class="sum-over">+${fmtMetric(diff,m)}${m.unit}</span>`;
     else if(remain===0) remainEl=`<span class="sum-over">達成</span>`;
-    else remainEl=`<span class="sum-remain">残${fmt(remain)}${m.unit}</span>`;
+    else remainEl=`<span class="sum-remain">残${fmtMetric(remain,m)}${m.unit}</span>`;
     return `<div class="sum-row">
       <div class="sum-row-top">
         <span class="sum-key">${m.name}</span>
-        <div class="sum-right">${remainEl}<span class="sum-val">${fmt(val)}/${fmt(totalTarget)}</span><span class="sum-pct">${Math.round(pct)}%</span></div>
+        <div class="sum-right">${remainEl}<span class="sum-val">${fmtMetric(val,m)}/${fmtMetric(totalTarget,m)}</span><span class="sum-pct">${Math.round(pct)}%</span></div>
       </div>
       <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${fillColor}"></div></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:3px">平均 ${fmt(avg)}${m.unit}${!m.monthly?` / 月（${elapsed}ヶ月）`:''}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">平均 ${fmtMetric(avg,m)}${m.unit}${!m.monthly?` / 月（${elapsed}ヶ月）`:''}</div>
     </div>`;
   }).join('');
   const qLabel=q?` / ${q.name}（${elapsed}ヶ月目）`:'';
@@ -588,15 +608,15 @@ function renderAnalysis() {
     if(pct>=100){badgeClass='green';badgeLabel='達成';fillColor='var(--ok)';}
     else if(pct>=70){badgeClass='yellow';badgeLabel='注意';fillColor='var(--warn)';}
     let remainText='';
-    if(item.diff>0) remainText=`<b style="color:var(--ok)">+${fmt(item.diff)}${item.unit}</b>`;
+    if(item.diff>0) remainText=`<b style="color:var(--ok)">+${fmtMetric(item.diff,item)}${item.unit}</b>`;
     else if(item.remain===0) remainText=`<b style="color:var(--ok)">達成</b>`;
-    else remainText=`<b style="color:var(--warn)">残${fmt(item.remain)}${item.unit}</b>`;
+    else remainText=`<b style="color:var(--warn)">残${fmtMetric(item.remain,item)}${item.unit}</b>`;
     return `<div class="analysis-item">
       <div class="analysis-head"><span class="analysis-name">${item.name}</span><span class="badge ${badgeClass}">${badgeLabel}</span></div>
       <div class="analysis-stats">
-        <span>実績 <b>${fmt(item.actual)}${item.unit}</b></span>
+        <span>実績 <b>${fmtMetric(item.actual,item)}${item.unit}</b></span>
         <span>${remainText}</span>
-        <span>平均 <b>${fmt(item.avg)}${item.unit}</b></span>
+        <span>平均 <b>${fmtMetric(item.avg,item)}${item.unit}</b></span>
         <span>進捗 <b>${pct}%</b></span>
       </div>
       <div class="analysis-pbar"><div class="analysis-pbar-fill" style="width:${Math.min(pct,100)}%;background:${fillColor}"></div></div>
@@ -636,7 +656,7 @@ function buildLineText() {
     const target=targets[m.key];
     const val=actual[m.key]||0;
     const totalTarget=(target!==null&&target!==undefined)?(m.monthly?target:target*elapsed):null;
-    lines.push(`${m.name}　${remainLabel(val,totalTarget,m.unit)}`);
+    lines.push(`${m.name}　${remainLabel(val,totalTarget,m.unit,m)}`);
   });
   return lines.join('\n');
 }
@@ -670,7 +690,7 @@ function renderSettings() {
     if(targets[m.key]===null){
       return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span style="font-size:12px;color:var(--text3)">目標なし</span></div>`;
     }
-    return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="number" class="setting-input" id="set-${m.key}" value="${targets[m.key]}" inputmode="numeric" min="0"></div>`;
+    return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="${isMoneyMetric(m)?'text':'number'}" class="setting-input" id="set-${m.key}" value="${fmtMetric(targets[m.key],m)}" inputmode="${isMoneyMetric(m)?'numeric':'decimal'}" min="0" onfocus="if(${isMoneyMetric(m)})this.value=String(parseVal(this.value))" onblur="if(${isMoneyMetric(m)})this.value=fmtMetric(parseVal(this.value),'${m.key}')"></div>`;
   }).join('');
   el.innerHTML=`
     <div class="section-label">目標値設定</div>
@@ -680,7 +700,7 @@ function renderSettings() {
 }
 function saveSettings(){
   const targets=loadTargets();
-  METRICS.forEach(m=>{const inp=document.getElementById(`set-${m.key}`);if(inp) targets[m.key]=parseFloat(inp.value)||0;});
+  METRICS.forEach(m=>{const inp=document.getElementById(`set-${m.key}`);if(inp) targets[m.key]=parseVal(inp.value);});
   saveTargets(targets);
   showToast('目標を保存しました ✓');
 }
@@ -690,6 +710,7 @@ function saveSettings(){
 // ══════════════════════════════════════════
 updateHeader();
 renderInput();
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
 </script>
 </body>
 </html>
