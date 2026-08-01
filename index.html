@@ -123,6 +123,18 @@
   .pwa-status{font-size:12px;color:var(--text2);line-height:1.6;padding:12px 14px;}
   .install-btn{width:calc(100% - 28px);margin:0 14px 14px;background:var(--ok);color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
   .install-btn[disabled]{background:var(--surface2);color:var(--text3);cursor:default;}
+  .install-banner{margin:10px 14px 0;background:linear-gradient(135deg,#1d4ed8,#2563eb);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.24);}
+  .install-banner.hidden{display:none;}
+  .install-banner-text{flex:1;min-width:0;}
+  .install-banner-title{font-size:14px;font-weight:800;color:#fff;}
+  .install-banner-sub{font-size:11px;line-height:1.45;color:rgba(255,255,255,.82);margin-top:2px;}
+  .install-banner-btn{border:none;border-radius:9px;background:#fff;color:#1d4ed8;font-size:13px;font-weight:800;padding:10px 12px;white-space:nowrap;cursor:pointer;}
+  .install-help{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:none;align-items:flex-end;justify-content:center;}
+  .install-help.show{display:flex;}
+  .install-help-panel{width:100%;max-width:560px;background:var(--surface);border-radius:18px 18px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--border);}
+  .install-help-panel h2{font-size:18px;margin-bottom:10px;}
+  .install-help-panel p{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px;}
+  .install-help-close{width:100%;height:46px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:15px;font-weight:700;}
 </style>
 </head>
 <body>
@@ -130,6 +142,13 @@
   <div class="header">
     <h1>セルナビ</h1>
     <span class="header-sub" id="header-period"></span>
+  </div>
+  <div class="install-banner" id="install-banner">
+    <div class="install-banner-text">
+      <div class="install-banner-title">セルナビをアプリとして使う</div>
+      <div class="install-banner-sub" id="install-banner-sub">ホーム画面へインストールすると全画面で起動できます</div>
+    </div>
+    <button class="install-banner-btn" id="install-banner-btn" onclick="installPWA()">インストール</button>
   </div>
   <div class="content" id="content">
     <div class="page active" id="page-input"></div>
@@ -159,6 +178,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       設定
     </button>
+  </div>
+</div>
+<div class="install-help" id="install-help" onclick="if(event.target===this)closeInstallHelp()">
+  <div class="install-help-panel">
+    <h2>インストール方法</h2>
+    <p id="install-help-message">Chrome右上の︙を押し、「アプリをインストール」または「ホーム画面に追加」を選択してください。</p>
+    <button class="install-help-close" onclick="closeInstallHelp()">閉じる</button>
   </div>
 </div>
 
@@ -737,24 +763,52 @@ function isInstalledPWA(){
 function updatePWAStatus(){
   const status=document.getElementById('pwa-status');
   const btn=document.getElementById('install-btn');
-  if(!status||!btn) return;
+  const banner=document.getElementById('install-banner');
+  const bannerBtn=document.getElementById('install-banner-btn');
+  const bannerSub=document.getElementById('install-banner-sub');
   if(isInstalledPWA()){
-    status.textContent='インストール済みです。ホーム画面から起動するとブラウザのアドレスバーなしで全画面表示されます。';
-    btn.textContent='インストール済み';btn.disabled=true;
-  }else if(deferredInstallPrompt){
-    status.textContent='PWAとしてインストールできます。下のボタンからインストールしてください。';
-    btn.textContent='アプリとしてインストール';btn.disabled=false;
+    if(status) status.textContent='インストール済みです。ホーム画面から起動するとブラウザ表示なしで全画面起動します。';
+    if(btn){btn.textContent='インストール済み';btn.disabled=true;}
+    if(banner) banner.classList.add('hidden');
+    return;
+  }
+  if(banner) banner.classList.remove('hidden');
+  if(deferredInstallPrompt){
+    if(status) status.textContent='PWAとしてインストールできます。ボタンを押してください。';
+    if(btn){btn.textContent='アプリとしてインストール';btn.disabled=false;}
+    if(bannerBtn) bannerBtn.textContent='インストール';
+    if(bannerSub) bannerSub.textContent='ボタンを押すとインストール確認画面が開きます';
   }else{
-    status.textContent='まだPWAとして認識されていません。Chromeでページを再読み込み後、もう一度この画面を開いてください。';
-    btn.textContent='インストール準備中';btn.disabled=true;
+    if(status) status.textContent='インストールボタンは公開ページ上に表示されています。Chrome側の判定前は、押すと手動手順を表示します。';
+    if(btn){btn.textContent='インストール方法を表示';btn.disabled=false;}
+    if(bannerBtn) bannerBtn.textContent='インストール';
+    if(bannerSub) bannerSub.textContent='押すとインストール画面、または端末別の手順を表示します';
   }
 }
 async function installPWA(){
-  if(!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt=null;
-  updatePWAStatus();
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    const result=await deferredInstallPrompt.userChoice;
+    if(result.outcome==='accepted') deferredInstallPrompt=null;
+    updatePWAStatus();
+    return;
+  }
+  openInstallHelp();
+}
+function openInstallHelp(){
+  const help=document.getElementById('install-help');
+  const msg=document.getElementById('install-help-message');
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  if(msg){
+    msg.textContent=isIOS
+      ? 'Safari下部の共有ボタンを押し、「ホーム画面に追加」を選択してください。'
+      : 'Chrome右上の︙を押し、「アプリをインストール」を選択してください。表示されない場合はページを再読み込みしてから、もう一度このボタンを押してください。';
+  }
+  if(help) help.classList.add('show');
+}
+function closeInstallHelp(){
+  const help=document.getElementById('install-help');
+  if(help) help.classList.remove('show');
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
