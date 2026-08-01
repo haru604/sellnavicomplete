@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>セルナビ</title>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0d0f14">
 <meta name="description" content="店舗実績を入力・分析・共有できるセルナビ">
-<link rel="manifest" href="./manifest.webmanifest">
+<link rel="manifest" href="./manifest.json" type="application/manifest+json">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
 <style>
   :root {
@@ -115,6 +115,14 @@
   .settings-save-btn:active{filter:brightness(.85);}
   .info-chip{font-size:11px;color:var(--accent2);background:rgba(99,102,241,.12);border-radius:6px;padding:2px 7px;margin-left:6px;}
   .empty-msg{text-align:center;color:var(--text3);font-size:14px;padding:32px;}
+
+  /* PWA / full-screen */
+  body{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
+  .tab-bar{padding-bottom:env(safe-area-inset-bottom);height:calc(var(--tab-h) + env(safe-area-inset-bottom));}
+  .content{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 8px);}
+  .pwa-status{font-size:12px;color:var(--text2);line-height:1.6;padding:12px 14px;}
+  .install-btn{width:calc(100% - 28px);margin:0 14px 14px;background:var(--ok);color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
+  .install-btn[disabled]{background:var(--surface2);color:var(--text3);cursor:default;}
 </style>
 </head>
 <body>
@@ -696,7 +704,11 @@ function renderSettings() {
     <div class="section-label">目標値設定</div>
     <div class="card">${rows}</div>
     <button class="settings-save-btn" onclick="saveSettings()">保存</button>
-    <div style="height:80px"></div>`;
+    <div class="section-label">アプリインストール</div>
+    <div class="card"><div class="pwa-status" id="pwa-status">状態を確認中…</div></div>
+    <button class="install-btn" id="install-btn" onclick="installPWA()" disabled>アプリとしてインストール</button>
+    <div style="height:100px"></div>`;
+  setTimeout(updatePWAStatus,0);
 }
 function saveSettings(){
   const targets=loadTargets();
@@ -710,7 +722,46 @@ function saveSettings(){
 // ══════════════════════════════════════════
 updateHeader();
 renderInput();
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',event=>{
+  event.preventDefault();
+  deferredInstallPrompt=event;
+  updatePWAStatus();
+});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;updatePWAStatus();showToast('インストールしました ✓');});
+function isInstalledPWA(){
+  return window.matchMedia('(display-mode: fullscreen)').matches ||
+         window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone===true;
+}
+function updatePWAStatus(){
+  const status=document.getElementById('pwa-status');
+  const btn=document.getElementById('install-btn');
+  if(!status||!btn) return;
+  if(isInstalledPWA()){
+    status.textContent='インストール済みです。ホーム画面から起動するとブラウザのアドレスバーなしで全画面表示されます。';
+    btn.textContent='インストール済み';btn.disabled=true;
+  }else if(deferredInstallPrompt){
+    status.textContent='PWAとしてインストールできます。下のボタンからインストールしてください。';
+    btn.textContent='アプリとしてインストール';btn.disabled=false;
+  }else{
+    status.textContent='まだPWAとして認識されていません。Chromeでページを再読み込み後、もう一度この画面を開いてください。';
+    btn.textContent='インストール準備中';btn.disabled=true;
+  }
+}
+async function installPWA(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt=null;
+  updatePWAStatus();
+}
+if('serviceWorker' in navigator){
+  window.addEventListener('load',async()=>{
+    try{await navigator.serviceWorker.register('./sw.js',{scope:'./'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    updatePWAStatus();
+  });
+}
 </script>
 </body>
 </html>
