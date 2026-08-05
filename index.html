@@ -99,10 +99,14 @@
   .analysis-pbar-fill{height:100%;border-radius:2px;}
 
   /* LINE */
-  .line-preview{background:var(--surface2);border-radius:10px;margin:0 14px;padding:14px;white-space:pre-wrap;font-size:14px;line-height:1.9;font-family:monospace;color:var(--text);}
-  .copy-btn{width:calc(100% - 28px);margin:12px 14px;background:#06c755;color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
-  .copy-btn:active{filter:brightness(.85);}
+  .line-editor{display:block;width:calc(100% - 28px);min-height:430px;margin:0 14px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;resize:vertical;white-space:pre-wrap;font-size:14px;line-height:1.9;font-family:monospace;color:var(--text);outline:none;}
+  .line-editor:focus{border-color:var(--accent);}
+  .line-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 14px 0;}
+  .line-sub-btn{height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
+  .copy-btn{width:calc(100% - 28px);margin:10px 14px 0;background:#06c755;color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
+  .copy-btn:active,.line-sub-btn:active{filter:brightness(.85);}
   .copy-toast{text-align:center;font-size:13px;color:var(--ok);padding:4px;min-height:24px;}
+  .save-status{font-size:11px;color:var(--text3);text-align:center;padding:5px 14px 0;}
 
   /* settings */
   .setting-row{display:flex;align-items:center;padding:0 14px;min-height:48px;border-bottom:1px solid var(--border);}
@@ -187,7 +191,10 @@ function fmt(v) {
 function parseVal(s) {
   const normalized=String(s??'').replace(/,/g,'').trim();
   const n=parseFloat(normalized);
-  return isNaN(n)?0:Math.max(0,parseFloat(n.toFixed(1)));
+  return isNaN(n)?0:parseFloat(n.toFixed(1));
+}
+function parseTargetVal(s) {
+  return Math.max(0,parseVal(s));
 }
 function isMoneyMetric(metricOrKey) {
   const key=typeof metricOrKey==='string'?metricOrKey:metricOrKey?.key;
@@ -349,6 +356,8 @@ let inputValues={};
 METRICS.forEach(m=>inputValues[m.key]=0);
 const today=new Date();
 let inputDate=dateKey(today.getFullYear(),today.getMonth(),today.getDate());
+let inputAutoSaveTimer=null;
+let lastInputSavedAt=null;
 
 // ══════════════════════════════════════════
 // TAB
@@ -397,15 +406,16 @@ function renderInput() {
       </div>
     </div>
     <div class="section-label">単月管理</div>
-    <div class="inp-hint">※ 今日までの累計実績をそのまま入力してください</div>
+    <div class="inp-hint">※ 累計実績を入力してください。訂正時はマイナス入力も可能です</div>
     <div class="card">
       ${METRICS.filter(m=>m.monthly).map(m=>metricRowHTML(m)).join('')}
     </div>
     <div class="section-label">四半期管理</div>
-    <div class="inp-hint">※ 今月分の累計実績をそのまま入力してください</div>
+    <div class="inp-hint">※ 今月分の累計実績を入力してください。変更内容は自動保存されます</div>
     <div class="card">
       ${METRICS.filter(m=>!m.monthly).map(m=>metricRowHTML(m)).join('')}
     </div>
+    <div class="save-status" id="input-save-status">${lastInputSavedAt?`最終保存 ${lastInputSavedAt}`:'変更すると自動保存されます'}</div>
     <div style="height:140px"></div>
   `;
   // 固定保存ボタン
@@ -431,9 +441,10 @@ function metricRowHTML(m) {
       <div class="counter-wrap">
         <button class="cnt-btn" onclick="changeVal('${m.key}',-${step})">−</button>
         <div class="cnt-val">
-          <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" min="0" step="${money?10000:0.1}"
-            inputmode="${money?'numeric':'decimal'}"
+          <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" step="${money?10000:0.1}"
+            inputmode="${money?'text':'decimal'}"
             onfocus="onValFocus('${m.key}',this)"
+            oninput="onValTyping('${m.key}',this.value)"
             onchange="onValInput('${m.key}',this.value)"
             onblur="onValInput('${m.key}',this.value)">
         </div>
@@ -452,25 +463,42 @@ function changeVal(key,delta) {
   const next=parseVal((cur+delta).toFixed(1));
   inp.value=fmtMetric(next,key);
   inputValues[key]=next;
+  scheduleInputAutoSave();
 }
 function onValFocus(key,inp) {
   if(isMoneyMetric(key)) inp.value=String(parseVal(inp.value));
+}
+function onValTyping(key,val) {
+  if(val===''||val==='-'||val==='.'||val==='-.') return;
+  inputValues[key]=parseVal(val);
+  scheduleInputAutoSave();
 }
 function onValInput(key,val) {
   inputValues[key]=parseVal(val);
   const inp=document.getElementById(`inp-${key}`);
   if(inp) inp.value=fmtMetric(inputValues[key],key);
+  scheduleInputAutoSave();
 }
-function saveInput() {
+function scheduleInputAutoSave() {
+  const status=document.getElementById('input-save-status');
+  if(status) status.textContent='保存中…';
+  clearTimeout(inputAutoSaveTimer);
+  inputAutoSaveTimer=setTimeout(()=>saveInput(false),450);
+}
+function saveInput(showMessage=true) {
+  clearTimeout(inputAutoSaveTimer);
   METRICS.forEach(m=>{
     const el=document.getElementById(`inp-${m.key}`);
-    if(el) inputValues[m.key]=parseVal(el.value);
+    if(el && !['','-','.','-.'].includes(el.value.trim())) inputValues[m.key]=parseVal(el.value);
   });
   const data=loadData();
   data[inputDate]={};
   METRICS.forEach(m=>{data[inputDate][m.key]=inputValues[m.key];});
   saveData(data);
-  showToast('保存しました ✓');
+  lastInputSavedAt=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  const status=document.getElementById('input-save-status');
+  if(status) status.textContent=`最終保存 ${lastInputSavedAt}`;
+  if(showMessage) showToast('保存しました ✓');
 }
 function showToast(msg) {
   const t=document.createElement('div');
@@ -532,6 +560,20 @@ function changeHistoryMonth(delta) {
 function toggleSummary(){historyShowSummary=!historyShowSummary;historySelectedDate=null;renderHistory();}
 function selectDay(dk){historySelectedDate=historySelectedDate===dk?null:dk;historyShowSummary=false;renderHistory();}
 
+function editHistoryDate(dk){
+  inputDate=dk;
+  switchTab('input');
+}
+function deleteHistoryDate(dk){
+  if(!confirm(`${dk.replace(/-/g,'/')} の実績を削除しますか？`)) return;
+  const data=loadData();
+  delete data[dk];
+  saveData(data);
+  historySelectedDate=null;
+  renderHistory();
+  showToast('削除しました');
+}
+
 function buildDetailHTML(data,dk) {
   const dayData=data[dk];
   const dateObj=new Date(dk+'T00:00:00');
@@ -562,6 +604,10 @@ function buildDetailHTML(data,dk) {
   return `<div class="detail-box">
     <h3>${label} の実績 <small style="font-size:11px;color:var(--text3)">${prevLabel}</small></h3>
     ${rows}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+      <button class="line-sub-btn" onclick="editHistoryDate('${dk}')">この日を編集</button>
+      <button class="line-sub-btn" style="color:var(--danger)" onclick="deleteHistoryDate('${dk}')">この日を削除</button>
+    </div>
   </div>`;
 }
 
@@ -652,51 +698,110 @@ function renderAnalysis() {
 // ══════════════════════════════════════════
 // LINE PAGE
 // ══════════════════════════════════════════
+const LINE_TEXT_KEY='sellnavi_line_text';
+
+function loadLineText(){
+  const saved=localStorage.getItem(LINE_TEXT_KEY);
+  if(saved!==null) return saved;
+  const initial=buildLineText();
+  localStorage.setItem(LINE_TEXT_KEY,initial);
+  return initial;
+}
+function saveLineText(text){
+  localStorage.setItem(LINE_TEXT_KEY,text);
+  const status=document.getElementById('line-save-status');
+  if(status) status.textContent='自動保存しました';
+}
 function renderLine() {
   const el=document.getElementById('page-line');
-  const text=buildLineText();
+  const text=loadLineText();
   el.innerHTML=`
     <div class="section-label">LINE 共有テキスト</div>
-    <div class="line-preview">${escHtml(text)}</div>
-    <button class="copy-btn" onclick="copyLine()">📋 コピー</button>
+    <div class="inp-hint">文章の追加・削除・改行ができます。編集内容はアプリを閉じても残ります</div>
+    <textarea class="line-editor" id="line-editor" oninput="saveLineText(this.value)">${escHtml(text)}</textarea>
+    <div class="save-status" id="line-save-status">自動保存済み</div>
+    <div class="line-actions">
+      <button class="line-sub-btn" onclick="updateLineNumbers()">数字だけ最新化</button>
+      <button class="line-sub-btn" onclick="resetLineText()">基本文を再生成</button>
+    </div>
+    <button class="copy-btn" onclick="copyLine()">📋 編集した文章をコピー</button>
     <div class="copy-toast" id="copy-toast"></div>
     <div style="height:80px"></div>`;
 }
 
-function buildLineText() {
+function buildLineMetricLines(){
   const data=loadData();
   const targets=loadTargets();
   const now=new Date();
-  const year=now.getFullYear(),month=now.getMonth(),day=now.getDate();
-  const dow=DOWS[now.getDay()];
+  const year=now.getFullYear(),month=now.getMonth();
   const elapsed=getElapsedMonthsInQuarter(year,month);
   const actual=getQuarterActual(data,year,month);
-  const lines=[`お疲れ様です`,`セルナビの実績共有です`,``,`${month+1}月${day}日（${dow}）`,``];
+  const map={};
   METRICS.forEach(m=>{
     const target=targets[m.key];
     const val=actual[m.key]||0;
     const totalTarget=(target!==null&&target!==undefined)?(m.monthly?target:target*elapsed):null;
-    lines.push(`${m.name}　${remainLabel(val,totalTarget,m.unit,m)}`);
+    map[m.name]=`${m.name}　${remainLabel(val,totalTarget,m.unit,m)}`;
   });
+  return map;
+}
+function buildLineText() {
+  const now=new Date();
+  const month=now.getMonth(),day=now.getDate();
+  const dow=DOWS[now.getDay()];
+  const metricLines=buildLineMetricLines();
+  const lines=[`お疲れ様です`,`セルナビの実績共有です`,``,`${month+1}月${day}日（${dow}）`,``];
+  METRICS.forEach(m=>lines.push(metricLines[m.name]));
   return lines.join('\n');
 }
-
+function updateLineNumbers(){
+  const editor=document.getElementById('line-editor');
+  if(!editor) return;
+  const metricLines=buildLineMetricLines();
+  const existing=editor.value.split('\n');
+  const found=new Set();
+  const updated=existing.map(line=>{
+    const metric=METRICS.find(m=>line.trimStart().startsWith(m.name));
+    if(!metric) return line;
+    found.add(metric.name);
+    const indent=line.match(/^\s*/)?.[0]||'';
+    return indent+metricLines[metric.name];
+  });
+  const missing=METRICS.filter(m=>!found.has(m.name));
+  if(missing.length){
+    if(updated.length&&updated[updated.length-1]!=='') updated.push('');
+    missing.forEach(m=>updated.push(metricLines[m.name]));
+  }
+  editor.value=updated.join('\n');
+  saveLineText(editor.value);
+  showCopyToast('数字を最新化しました ✓');
+}
+function resetLineText(){
+  if(!confirm('現在の編集内容を消して、最新の日付・実績から基本文を作り直しますか？')) return;
+  const text=buildLineText();
+  const editor=document.getElementById('line-editor');
+  if(editor) editor.value=text;
+  saveLineText(text);
+  showCopyToast('基本文を再生成しました ✓');
+}
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function copyLine(){
-  const text=buildLineText();
-  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(showCopyToast).catch(()=>fallbackCopy(text));
+  const editor=document.getElementById('line-editor');
+  const text=editor?editor.value:loadLineText();
+  saveLineText(text);
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(()=>showCopyToast('コピーしました ✓')).catch(()=>fallbackCopy(text));
   else fallbackCopy(text);
 }
 function fallbackCopy(text){
   const ta=document.createElement('textarea');
   ta.value=text;ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
   document.body.appendChild(ta);ta.focus();ta.select();
-  try{document.execCommand('copy');showCopyToast();}catch{}
+  try{document.execCommand('copy');showCopyToast('コピーしました ✓');}catch{}
   document.body.removeChild(ta);
 }
-function showCopyToast(){
+function showCopyToast(message='コピーしました ✓'){
   const el=document.getElementById('copy-toast');
-  if(el){el.textContent='コピーしました ✓';setTimeout(()=>{if(el)el.textContent='';},2000);}
+  if(el){el.textContent=message;setTimeout(()=>{if(el)el.textContent='';},2000);}
 }
 
 // ══════════════════════════════════════════
@@ -710,7 +815,7 @@ function renderSettings() {
     if(targets[m.key]===null){
       return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span style="font-size:12px;color:var(--text3)">目標なし</span></div>`;
     }
-    return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="${isMoneyMetric(m)?'text':'number'}" class="setting-input" id="set-${m.key}" value="${fmtMetric(targets[m.key],m)}" inputmode="${isMoneyMetric(m)?'numeric':'decimal'}" min="0" onfocus="if(${isMoneyMetric(m)})this.value=String(parseVal(this.value))" onblur="if(${isMoneyMetric(m)})this.value=fmtMetric(parseVal(this.value),'${m.key}')"></div>`;
+    return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="${isMoneyMetric(m)?'text':'number'}" class="setting-input" id="set-${m.key}" value="${fmtMetric(targets[m.key],m)}" inputmode="${isMoneyMetric(m)?'numeric':'decimal'}" min="0" onfocus="if(${isMoneyMetric(m)})this.value=String(parseTargetVal(this.value))" onblur="if(${isMoneyMetric(m)})this.value=fmtMetric(parseTargetVal(this.value),'${m.key}')"></div>`;
   }).join('');
   el.innerHTML=`
     <div class="section-label">目標値設定</div>
@@ -720,7 +825,7 @@ function renderSettings() {
 }
 function saveSettings(){
   const targets=loadTargets();
-  METRICS.forEach(m=>{const inp=document.getElementById(`set-${m.key}`);if(inp) targets[m.key]=parseVal(inp.value);});
+  METRICS.forEach(m=>{const inp=document.getElementById(`set-${m.key}`);if(inp) targets[m.key]=parseTargetVal(inp.value);});
   saveTargets(targets);
   showToast('目標を保存しました ✓');
 }
@@ -770,7 +875,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=8',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=9',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
