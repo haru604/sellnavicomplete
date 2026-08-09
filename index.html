@@ -860,7 +860,7 @@ function buildCloudPayload(){
     data:loadData(),
     targets:loadTargets(),
     lineText:loadLineText(),
-    version:10,
+    version:11,
     savedAt:new Date().toISOString()
   };
 }
@@ -906,7 +906,7 @@ async function pullCloudData({force=false,render=true}={}){
   const row=await fetchCloudRecord();
   if(!row){
     cloudSyncReady=false;
-    updateSyncStatus('クラウドに初期データがありません。最新端末で「この端末を親にする」を押してください');
+    updateSyncStatus('クラウドに同期データがありません',true);
     return false;
   }
   const last=localStorage.getItem(SYNC_LAST_CLOUD_KEY)||'';
@@ -1004,12 +1004,11 @@ function renderSettings() {
 
     <div class="section-label">複数端末データ同期</div>
     <div class="card">
-      <div class="sync-note"><b>初回だけ注意：</b> 一番新しい実績を持つ端末で「この端末を親にする」。他の端末では「クラウドから受け取る」を押します。以後は自動同期します。</div>
+      <div class="sync-note"><b>同期設定済み：</b> 通常は自動同期されます。新しい端末を追加したときだけ「クラウドから受け取る」を使用してください。</div>
       <div class="sync-field"><label>Supabase Project URL</label><input id="sync-url" value="${escHtml(sync.url||'')}" placeholder="https://xxxxx.supabase.co"></div>
       <div class="sync-field"><label>Publishable Key（sb_publishable_...）</label><input id="sync-key" value="${escHtml(sync.key||'')}" placeholder="sb_publishable_..."></div>
       <div class="sync-field"><label>店舗コード（全端末で同じ文字）</label><input id="sync-store" value="${escHtml(sync.storeCode||'')}" placeholder="例：nitta"></div>
-      <div class="sync-actions">
-        <button class="sync-btn primary" onclick="setThisDeviceAsParent()">この端末を親にする</button>
+      <div class="sync-actions" style="grid-template-columns:1fr">
         <button class="sync-btn" onclick="importFromCloud()">クラウドから受け取る</button>
       </div>
       <div class="sync-status" id="sync-status">${syncConfigured()?'同期設定あり':'未設定'}</div>
