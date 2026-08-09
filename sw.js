@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sellnavi-pwa-v11';
+const CACHE_NAME = 'sellnavi-pwa-v12';
 const BASE = '/sellnavicomplete/';
 const APP_SHELL = [
   BASE,

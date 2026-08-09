@@ -468,6 +468,13 @@ function metricRowHTML(m) {
     </div>`;
 }
 
+function inputGuideText(key){
+  if(key==='supportFlat') return '現在の合計実績 ＋ 当日の獲得件数を入力';
+  if(key==='paidSupport') return '現在の合計実績 ＋ 当日の獲得金額を入力';
+  if(key==='plus1Collection') return 'POSで確認した最新の実績金額を入力';
+  return '13時以降にセルナビで更新された最新実績を入力';
+}
+
 function toggleInputGuide(key){
   const panel=document.getElementById(`guide-${key}`);
   if(panel) panel.classList.toggle('show');
@@ -1068,7 +1075,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=10',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=12',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
