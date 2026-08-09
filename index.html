@@ -522,7 +522,8 @@ function saveInput(showMessage=true) {
   data[inputDate]={};
   METRICS.forEach(m=>{data[inputDate][m.key]=inputValues[m.key];});
   saveData(data);
-  refreshLineNumbersInStorage();
+  // 保存した実績から、LINE共有の日付・残数をその場で再計算して自動反映
+  refreshLineShareInStorage();
   lastInputSavedAt=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
   const status=document.getElementById('input-save-status');
   if(status) status.textContent=`最終保存 ${lastInputSavedAt}`;
@@ -743,7 +744,7 @@ function saveLineText(text){
 }
 function renderLine() {
   const el=document.getElementById('page-line');
-  refreshLineNumbersInStorage();
+  refreshLineShareInStorage();
   const text=loadLineText();
   el.innerHTML=`
     <div class="section-label">LINE 共有テキスト</div>
@@ -780,17 +781,46 @@ function buildLineText() {
   METRICS.forEach(m=>lines.push(metricLines[m.name]));
   return lines.join('\n');
 }
-function applyLatestNumbersToLineText(text){
+function currentLineDateLabel(){
+  const now=new Date();
+  return `${now.getMonth()+1}月${now.getDate()}日（${DOWS[now.getDay()]}）`;
+}
+function looksLikeLineDate(line){
+  return /^\s*\d{1,2}月\d{1,2}日（[日月火水木金土]）\s*$/.test(String(line||''));
+}
+function metricFromLine(line){
+  // 自由編集で先頭に記号を付けても、実績行として認識する
+  const normalized=String(line||'').trimStart().replace(/^[・●○■□◆◇▶▷►→※★☆\-—–\s]+/,'');
+  return METRICS.find(m=>normalized.startsWith(m.name))||null;
+}
+function applyLatestDataToLineText(text){
   const metricLines=buildLineMetricLines();
+  const currentDate=currentLineDateLabel();
   const existing=String(text||'').split('\n');
   const found=new Set();
+  let dateUpdated=false;
+
   const updated=existing.map(line=>{
-    const metric=METRICS.find(m=>line.trimStart().startsWith(m.name));
+    if(looksLikeLineDate(line)){
+      dateUpdated=true;
+      const indent=line.match(/^\s*/)?.[0]||'';
+      return indent+currentDate;
+    }
+    const metric=metricFromLine(line);
     if(!metric) return line;
     found.add(metric.name);
     const indent=line.match(/^\s*/)?.[0]||'';
     return indent+metricLines[metric.name];
   });
+
+  // 日付行が消されていた場合は、見出し直後に最新日付を戻す
+  if(!dateUpdated){
+    const titleIndex=updated.findIndex(line=>String(line).trim()==='セルナビの実績共有です');
+    const insertAt=titleIndex>=0?titleIndex+1:Math.min(2,updated.length);
+    updated.splice(insertAt,0,'',currentDate);
+  }
+
+  // 実績行が誤って消されていても、最新値で復元する
   const missing=METRICS.filter(m=>!found.has(m.name));
   if(missing.length){
     if(updated.length&&updated[updated.length-1]!=='') updated.push('');
@@ -798,15 +828,17 @@ function applyLatestNumbersToLineText(text){
   }
   return updated.join('\n');
 }
-function refreshLineNumbersInStorage(){
+function refreshLineShareInStorage(){
   const current=loadLineText();
-  const updated=applyLatestNumbersToLineText(current);
+  const updated=applyLatestDataToLineText(current);
   if(updated!==current) localStorage.setItem(LINE_TEXT_KEY,updated);
   const editor=document.getElementById('line-editor');
   if(editor && editor.value!==updated) editor.value=updated;
   return updated;
 }
-function updateLineNumbers(){ refreshLineNumbersInStorage(); }
+// 旧名から呼ばれても完全自動更新へ流す
+function refreshLineNumbersInStorage(){ return refreshLineShareInStorage(); }
+function updateLineNumbers(){ return refreshLineShareInStorage(); }
 
 function resetLineText(){
   if(!confirm('現在の編集内容を消して、最新の日付・実績から基本文を作り直しますか？')) return;
@@ -867,7 +899,7 @@ function buildCloudPayload(){
     data:loadData(),
     targets:loadTargets(),
     lineText:loadLineText(),
-    version:11,
+    version:13,
     savedAt:new Date().toISOString()
   };
 }
@@ -876,7 +908,7 @@ function applyCloudPayload(payload){
   if(payload.data) localStorage.setItem('sellnavi_data',JSON.stringify(payload.data));
   if(payload.targets) localStorage.setItem('sellnavi_targets',JSON.stringify({...DEFAULT_TARGETS,...payload.targets}));
   if(typeof payload.lineText==='string') localStorage.setItem(LINE_TEXT_KEY,payload.lineText);
-  refreshLineNumbersInStorage();
+  refreshLineShareInStorage();
   return true;
 }
 async function fetchCloudRecord(){
@@ -1075,7 +1107,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=12',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=13',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
