@@ -39,9 +39,13 @@
   .date-row label{font-size:13px;color:var(--text2);white-space:nowrap;}
   .date-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;padding:9px 12px;-webkit-appearance:none;}
   .date-input:focus{outline:none;border-color:var(--accent);}
-  .metric-row{display:flex;align-items:center;padding:0 14px;min-height:52px;border-bottom:1px solid var(--border);}
-  .metric-row:last-child{border-bottom:none;}
-  .metric-name{flex:1;font-size:14px;}
+  .metric-block{border-bottom:1px solid var(--border);}
+  .metric-block:last-child{border-bottom:none;}
+  .metric-row{display:flex;align-items:center;padding:0 14px;min-height:52px;}
+  .metric-name{flex:1;font-size:14px;display:flex;align-items:center;gap:7px;min-width:0;}
+  .guide-btn{border:1px solid var(--border);background:var(--surface2);color:var(--accent);border-radius:999px;padding:4px 8px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer;}
+  .guide-panel{display:none;margin:-2px 14px 10px;padding:9px 10px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22);border-radius:8px;color:var(--text2);font-size:12px;line-height:1.55;}
+  .guide-panel.show{display:block;}
   .metric-unit{font-size:11px;color:var(--text3);margin-right:8px;}
   .counter-wrap{display:flex;align-items:center;}
   .cnt-btn{width:36px;height:36px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;line-height:1;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:300;flex-shrink:0;}
@@ -101,7 +105,6 @@
   /* LINE */
   .line-editor{display:block;width:calc(100% - 28px);min-height:430px;margin:0 14px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;resize:vertical;white-space:pre-wrap;font-size:14px;line-height:1.9;font-family:monospace;color:var(--text);outline:none;}
   .line-editor:focus{border-color:var(--accent);}
-  .line-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 14px 0;}
   .line-sub-btn{height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;}
   .copy-btn{width:calc(100% - 28px);margin:10px 14px 0;background:#06c755;color:#fff;border:none;border-radius:10px;height:48px;font-size:16px;font-weight:700;cursor:pointer;}
   .copy-btn:active,.line-sub-btn:active{filter:brightness(.85);}
@@ -119,6 +122,15 @@
   .settings-save-btn:active{filter:brightness(.85);}
   .info-chip{font-size:11px;color:var(--accent2);background:rgba(99,102,241,.12);border-radius:6px;padding:2px 7px;margin-left:6px;}
   .empty-msg{text-align:center;color:var(--text3);font-size:14px;padding:32px;}
+  .sync-note{font-size:12px;color:var(--text2);line-height:1.65;padding:10px 14px 2px;}
+  .sync-field{padding:10px 14px;border-bottom:1px solid var(--border);}
+  .sync-field label{display:block;font-size:11px;color:var(--text2);margin-bottom:6px;}
+  .sync-field input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:10px;border-radius:8px;outline:none;}
+  .sync-field input:focus{border-color:var(--accent);}
+  .sync-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px;}
+  .sync-btn{height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;}
+  .sync-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .sync-status{font-size:11px;color:var(--text3);padding:0 14px 12px;line-height:1.5;}
 
   /* PWA / full-screen */
   body{padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);}
@@ -269,9 +281,9 @@ function getElapsedMonthsInQuarter(year,month) {
 }
 
 function loadData() { try{return JSON.parse(localStorage.getItem('sellnavi_data')||'{}')}catch{return{}} }
-function saveData(data) { localStorage.setItem('sellnavi_data',JSON.stringify(data)); }
+function saveData(data) { localStorage.setItem('sellnavi_data',JSON.stringify(data)); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
 function loadTargets() { try{const saved=JSON.parse(localStorage.getItem('sellnavi_targets')||'null')||{};return {...DEFAULT_TARGETS,...saved}}catch{return{...DEFAULT_TARGETS}} }
-function saveTargets(t) { localStorage.setItem('sellnavi_targets',JSON.stringify(t)); }
+function saveTargets(t) { localStorage.setItem('sellnavi_targets',JSON.stringify(t)); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
 
 function dateKey(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
@@ -435,22 +447,30 @@ function metricRowHTML(m) {
   const v=fmtMetric(inputValues[m.key]||0,m);
   const step=money?10000:1;
   return `
-    <div class="metric-row">
-      <span class="metric-name">${m.name}</span>
-      <span class="metric-unit">${m.unit}</span>
-      <div class="counter-wrap">
-        <button class="cnt-btn" onclick="changeVal('${m.key}',-${step})">−</button>
-        <div class="cnt-val">
-          <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" step="${money?10000:0.1}"
-            inputmode="${money?'text':'decimal'}"
-            onfocus="onValFocus('${m.key}',this)"
-            oninput="onValTyping('${m.key}',this.value)"
-            onchange="onValInput('${m.key}',this.value)"
-            onblur="onValInput('${m.key}',this.value)">
+    <div class="metric-block">
+      <div class="metric-row">
+        <span class="metric-name"><span>${m.name}</span><button class="guide-btn" onclick="toggleInputGuide('${m.key}')">入力ガイド</button></span>
+        <span class="metric-unit">${m.unit}</span>
+        <div class="counter-wrap">
+          <button class="cnt-btn" onclick="changeVal('${m.key}',-${step})">−</button>
+          <div class="cnt-val">
+            <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" step="${money?10000:0.1}"
+              inputmode="${money?'text':'decimal'}"
+              onfocus="onValFocus('${m.key}',this)"
+              oninput="onValTyping('${m.key}',this.value)"
+              onchange="onValInput('${m.key}',this.value)"
+              onblur="onValInput('${m.key}',this.value)">
+          </div>
+          <button class="cnt-btn" onclick="changeVal('${m.key}',${step})">＋</button>
         </div>
-        <button class="cnt-btn" onclick="changeVal('${m.key}',${step})">＋</button>
       </div>
+      <div class="guide-panel" id="guide-${m.key}">${inputGuideText(m.key)}</div>
     </div>`;
+}
+
+function toggleInputGuide(key){
+  const panel=document.getElementById(`guide-${key}`);
+  if(panel) panel.classList.toggle('show');
 }
 
 function onDateChange(val) {
@@ -495,6 +515,7 @@ function saveInput(showMessage=true) {
   data[inputDate]={};
   METRICS.forEach(m=>{data[inputDate][m.key]=inputValues[m.key];});
   saveData(data);
+  refreshLineNumbersInStorage();
   lastInputSavedAt=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
   const status=document.getElementById('input-save-status');
   if(status) status.textContent=`最終保存 ${lastInputSavedAt}`;
@@ -709,21 +730,19 @@ function loadLineText(){
 }
 function saveLineText(text){
   localStorage.setItem(LINE_TEXT_KEY,text);
+  if(typeof scheduleCloudPush==='function') scheduleCloudPush();
   const status=document.getElementById('line-save-status');
   if(status) status.textContent='自動保存しました';
 }
 function renderLine() {
   const el=document.getElementById('page-line');
+  refreshLineNumbersInStorage();
   const text=loadLineText();
   el.innerHTML=`
     <div class="section-label">LINE 共有テキスト</div>
-    <div class="inp-hint">文章の追加・削除・改行ができます。編集内容はアプリを閉じても残ります</div>
+    <div class="inp-hint">文章の追加・削除・改行はそのまま保存。実績数字は入力データから自動で最新化されます</div>
     <textarea class="line-editor" id="line-editor" oninput="saveLineText(this.value)">${escHtml(text)}</textarea>
-    <div class="save-status" id="line-save-status">自動保存済み</div>
-    <div class="line-actions">
-      <button class="line-sub-btn" onclick="updateLineNumbers()">数字だけ最新化</button>
-      <button class="line-sub-btn" onclick="resetLineText()">基本文を再生成</button>
-    </div>
+    <div class="save-status" id="line-save-status">自動保存済み / 数字は自動更新</div>
     <button class="copy-btn" onclick="copyLine()">📋 編集した文章をコピー</button>
     <div class="copy-toast" id="copy-toast"></div>
     <div style="height:80px"></div>`;
@@ -754,11 +773,9 @@ function buildLineText() {
   METRICS.forEach(m=>lines.push(metricLines[m.name]));
   return lines.join('\n');
 }
-function updateLineNumbers(){
-  const editor=document.getElementById('line-editor');
-  if(!editor) return;
+function applyLatestNumbersToLineText(text){
   const metricLines=buildLineMetricLines();
-  const existing=editor.value.split('\n');
+  const existing=String(text||'').split('\n');
   const found=new Set();
   const updated=existing.map(line=>{
     const metric=METRICS.find(m=>line.trimStart().startsWith(m.name));
@@ -772,10 +789,18 @@ function updateLineNumbers(){
     if(updated.length&&updated[updated.length-1]!=='') updated.push('');
     missing.forEach(m=>updated.push(metricLines[m.name]));
   }
-  editor.value=updated.join('\n');
-  saveLineText(editor.value);
-  showCopyToast('数字を最新化しました ✓');
+  return updated.join('\n');
 }
+function refreshLineNumbersInStorage(){
+  const current=loadLineText();
+  const updated=applyLatestNumbersToLineText(current);
+  if(updated!==current) localStorage.setItem(LINE_TEXT_KEY,updated);
+  const editor=document.getElementById('line-editor');
+  if(editor && editor.value!==updated) editor.value=updated;
+  return updated;
+}
+function updateLineNumbers(){ refreshLineNumbersInStorage(); }
+
 function resetLineText(){
   if(!confirm('現在の編集内容を消して、最新の日付・実績から基本文を作り直しますか？')) return;
   const text=buildLineText();
@@ -805,6 +830,160 @@ function showCopyToast(message='コピーしました ✓'){
 }
 
 // ══════════════════════════════════════════
+// CLOUD SYNC (Supabase REST)
+// ══════════════════════════════════════════
+const SYNC_CONFIG_KEY='sellnavi_sync_config';
+const SYNC_LAST_CLOUD_KEY='sellnavi_sync_last_cloud_updated';
+let cloudPushTimer=null;
+let cloudSyncReady=false;
+let cloudPollTimer=null;
+
+function loadSyncConfig(){
+  try{return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||'{}')||{}}catch{return{}}
+}
+function saveSyncConfig(config){
+  localStorage.setItem(SYNC_CONFIG_KEY,JSON.stringify(config));
+}
+function syncConfigured(){
+  const c=loadSyncConfig();
+  return !!(c.url&&c.key&&c.storeCode);
+}
+function normalizedSupabaseUrl(url){return String(url||'').trim().replace(/\/$/,'');}
+function cloudHeaders(preferRepresentation=false){
+  const c=loadSyncConfig();
+  const h={'apikey':c.key,'Authorization':`Bearer ${c.key}`,'Content-Type':'application/json'};
+  if(preferRepresentation) h['Prefer']='resolution=merge-duplicates,return=representation';
+  return h;
+}
+function buildCloudPayload(){
+  return {
+    data:loadData(),
+    targets:loadTargets(),
+    lineText:loadLineText(),
+    version:10,
+    savedAt:new Date().toISOString()
+  };
+}
+function applyCloudPayload(payload){
+  if(!payload||typeof payload!=='object') return false;
+  if(payload.data) localStorage.setItem('sellnavi_data',JSON.stringify(payload.data));
+  if(payload.targets) localStorage.setItem('sellnavi_targets',JSON.stringify({...DEFAULT_TARGETS,...payload.targets}));
+  if(typeof payload.lineText==='string') localStorage.setItem(LINE_TEXT_KEY,payload.lineText);
+  refreshLineNumbersInStorage();
+  return true;
+}
+async function fetchCloudRecord(){
+  if(!syncConfigured()) return null;
+  const c=loadSyncConfig();
+  const url=`${normalizedSupabaseUrl(c.url)}/rest/v1/sellnavi_sync?store_code=eq.${encodeURIComponent(c.storeCode)}&select=store_code,payload,updated_at&limit=1`;
+  const res=await fetch(url,{headers:cloudHeaders()});
+  if(!res.ok) throw new Error(`クラウド取得失敗 (${res.status})`);
+  const rows=await res.json();
+  return rows?.[0]||null;
+}
+async function pushCloudData({force=false}={}){
+  if(!syncConfigured() || (!cloudSyncReady&&!force)) return false;
+  const c=loadSyncConfig();
+  const body={store_code:c.storeCode,payload:buildCloudPayload(),updated_at:new Date().toISOString()};
+  const url=`${normalizedSupabaseUrl(c.url)}/rest/v1/sellnavi_sync?on_conflict=store_code`;
+  const res=await fetch(url,{method:'POST',headers:cloudHeaders(true),body:JSON.stringify(body)});
+  if(!res.ok) throw new Error(`クラウド保存失敗 (${res.status})`);
+  let row=null;
+  try{const rows=await res.json();row=rows?.[0]||null;}catch{}
+  const ts=row?.updated_at||body.updated_at;
+  localStorage.setItem(SYNC_LAST_CLOUD_KEY,ts);
+  cloudSyncReady=true;
+  updateSyncStatus(`同期済み ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
+  return true;
+}
+function scheduleCloudPush(){
+  if(!syncConfigured()||!cloudSyncReady) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer=setTimeout(()=>pushCloudData().catch(err=>updateSyncStatus(err.message,true)),900);
+}
+async function pullCloudData({force=false,render=true}={}){
+  if(!syncConfigured()) return false;
+  const row=await fetchCloudRecord();
+  if(!row){
+    cloudSyncReady=false;
+    updateSyncStatus('クラウドに初期データがありません。最新端末で「この端末を親にする」を押してください');
+    return false;
+  }
+  const last=localStorage.getItem(SYNC_LAST_CLOUD_KEY)||'';
+  if(force || !last || row.updated_at>last){
+    applyCloudPayload(row.payload);
+    localStorage.setItem(SYNC_LAST_CLOUD_KEY,row.updated_at||new Date().toISOString());
+    if(render){
+      if(currentTab==='input') renderInput();
+      else if(currentTab==='history') renderHistory();
+      else if(currentTab==='analysis') renderAnalysis();
+      else if(currentTab==='line') renderLine();
+    }
+  }
+  cloudSyncReady=true;
+  updateSyncStatus(`同期済み ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`);
+  return true;
+}
+async function setThisDeviceAsParent(){
+  if(!saveSyncSettingsFromForm()) return;
+  if(!confirm('この端末の現在データをクラウドの基準データとして登録します。よろしいですか？')) return;
+  try{
+    cloudSyncReady=true;
+    await pushCloudData({force:true});
+    showToast('この端末を親データに設定しました ✓');
+    startCloudPolling();
+  }catch(err){cloudSyncReady=false;updateSyncStatus(err.message,true);alert(err.message);}
+}
+async function importFromCloud(){
+  if(!saveSyncSettingsFromForm()) return;
+  if(!confirm('この端末の古いデータをクラウドの最新データに置き換えます。よろしいですか？')) return;
+  try{
+    await pullCloudData({force:true,render:true});
+    showToast('クラウドの最新データを反映しました ✓');
+    startCloudPolling();
+  }catch(err){updateSyncStatus(err.message,true);alert(err.message);}
+}
+function saveSyncSettingsFromForm(showToastMessage=false){
+  const url=document.getElementById('sync-url')?.value.trim()||'';
+  const key=document.getElementById('sync-key')?.value.trim()||'';
+  const storeCode=document.getElementById('sync-store')?.value.trim()||'';
+  if(!url||!key||!storeCode){alert('Supabase URL・Publishable Key・店舗コードをすべて入力してください');return false;}
+  saveSyncConfig({url:normalizedSupabaseUrl(url),key,storeCode});
+  cloudSyncReady=false;
+  if(showToastMessage) showToast('同期設定を保存しました ✓');
+  updateSyncStatus('設定保存済み。初回は親端末か受信端末かを選んでください');
+  return true;
+}
+function updateSyncStatus(text,isError=false){
+  const el=document.getElementById('sync-status');
+  if(el){el.textContent=text;el.style.color=isError?'var(--danger)':'var(--text3)';}
+}
+function startCloudPolling(){
+  clearInterval(cloudPollTimer);
+  if(!syncConfigured()) return;
+  cloudPollTimer=setInterval(()=>{
+    if(document.visibilityState==='visible') pullCloudData({render:true}).catch(err=>updateSyncStatus(err.message,true));
+  },15000);
+}
+async function initCloudSync(){
+  if(!syncConfigured()) return;
+  try{
+    const row=await fetchCloudRecord();
+    if(row){
+      applyCloudPayload(row.payload);
+      localStorage.setItem(SYNC_LAST_CLOUD_KEY,row.updated_at||new Date().toISOString());
+      cloudSyncReady=true;
+      if(currentTab==='input') renderInput();
+      startCloudPolling();
+    }else{
+      cloudSyncReady=false;
+    }
+  }catch(err){cloudSyncReady=false;console.warn('Cloud sync init failed',err);}
+}
+window.addEventListener('focus',()=>{if(syncConfigured()&&cloudSyncReady) pullCloudData({render:true}).catch(()=>{});});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&syncConfigured()&&cloudSyncReady) pullCloudData({render:true}).catch(()=>{});});
+
+// ══════════════════════════════════════════
 // SETTINGS PAGE
 // ══════════════════════════════════════════
 function renderSettings() {
@@ -817,10 +996,24 @@ function renderSettings() {
     }
     return `<div class="setting-row"><span class="setting-name">${m.name}${chip}</span><span class="setting-unit">${m.unit}</span><input type="${isMoneyMetric(m)?'text':'number'}" class="setting-input" id="set-${m.key}" value="${fmtMetric(targets[m.key],m)}" inputmode="${isMoneyMetric(m)?'numeric':'decimal'}" min="0" onfocus="if(${isMoneyMetric(m)})this.value=String(parseTargetVal(this.value))" onblur="if(${isMoneyMetric(m)})this.value=fmtMetric(parseTargetVal(this.value),'${m.key}')"></div>`;
   }).join('');
+  const sync=loadSyncConfig();
   el.innerHTML=`
     <div class="section-label">目標値設定</div>
     <div class="card">${rows}</div>
     <button class="settings-save-btn" onclick="saveSettings()">保存</button>
+
+    <div class="section-label">複数端末データ同期</div>
+    <div class="card">
+      <div class="sync-note"><b>初回だけ注意：</b> 一番新しい実績を持つ端末で「この端末を親にする」。他の端末では「クラウドから受け取る」を押します。以後は自動同期します。</div>
+      <div class="sync-field"><label>Supabase Project URL</label><input id="sync-url" value="${escHtml(sync.url||'')}" placeholder="https://xxxxx.supabase.co"></div>
+      <div class="sync-field"><label>Publishable Key（sb_publishable_...）</label><input id="sync-key" value="${escHtml(sync.key||'')}" placeholder="sb_publishable_..."></div>
+      <div class="sync-field"><label>店舗コード（全端末で同じ文字）</label><input id="sync-store" value="${escHtml(sync.storeCode||'')}" placeholder="例：nitta"></div>
+      <div class="sync-actions">
+        <button class="sync-btn primary" onclick="setThisDeviceAsParent()">この端末を親にする</button>
+        <button class="sync-btn" onclick="importFromCloud()">クラウドから受け取る</button>
+      </div>
+      <div class="sync-status" id="sync-status">${syncConfigured()?'同期設定あり':'未設定'}</div>
+    </div>
     <div style="height:80px"></div>`;
 }
 function saveSettings(){
@@ -835,6 +1028,7 @@ function saveSettings(){
 // ══════════════════════════════════════════
 updateHeader();
 renderInput();
+setTimeout(()=>initCloudSync(),0);
 let deferredInstallPrompt=null;
 
 window.addEventListener('beforeinstallprompt',event=>{
@@ -875,7 +1069,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=9',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=10',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
