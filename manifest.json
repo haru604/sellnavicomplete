@@ -2,15 +2,21 @@
   "id": "/sellnavicomplete/",
   "name": "セルナビ",
   "short_name": "セルナビ",
-  "description": "店舗実績を入力・分析・共有できるセルナビ",
+  "description": "店舗実績を入力・分析・共有し、WORKNOTEへ自動連携できるセルナビ",
   "start_url": "/sellnavicomplete/",
   "scope": "/sellnavicomplete/",
   "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "background_color": "#0d0f14",
   "theme_color": "#0d0f14",
   "orientation": "portrait-primary",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/sellnavicomplete/icon-192.png",

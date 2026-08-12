@@ -281,9 +281,17 @@ function getElapsedMonthsInQuarter(year,month) {
 }
 
 function loadData() { try{return JSON.parse(localStorage.getItem('sellnavi_data')||'{}')}catch{return{}} }
-function saveData(data) { localStorage.setItem('sellnavi_data',JSON.stringify(data)); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
+function saveData(data) {
+  localStorage.setItem('sellnavi_data',JSON.stringify(data));
+  publishWorknoteBridge(inputDate);
+  if(typeof scheduleCloudPush==='function') scheduleCloudPush();
+}
 function loadTargets() { try{const saved=JSON.parse(localStorage.getItem('sellnavi_targets')||'null')||{};return {...DEFAULT_TARGETS,...saved}}catch{return{...DEFAULT_TARGETS}} }
-function saveTargets(t) { localStorage.setItem('sellnavi_targets',JSON.stringify(t)); if(typeof scheduleCloudPush==='function') scheduleCloudPush(); }
+function saveTargets(t) {
+  localStorage.setItem('sellnavi_targets',JSON.stringify(t));
+  publishWorknoteBridge(inputDate||dateKey(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()));
+  if(typeof scheduleCloudPush==='function') scheduleCloudPush();
+}
 
 function dateKey(y,m,d) { return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
 
@@ -355,6 +363,64 @@ function remainLabel(actual,totalTarget,unit,metric) {
   if (diff===0) return '達成';
   return `残${fmtMetric(totalTarget-actual,metric)}${unit}`;
 }
+
+const WORKNOTE_BRIDGE_KEY='worknote_sellnavi_bridge_v1';
+
+function dataThroughDate(data,dateStr){
+  const out={};
+  Object.keys(data||{}).filter(k=>k<=dateStr).forEach(k=>out[k]=data[k]);
+  return out;
+}
+function latestDataDateThrough(data,dateStr){
+  const keys=Object.keys(data||{}).filter(k=>k<=dateStr).sort();
+  return keys.length?keys[keys.length-1]:null;
+}
+function buildWorknoteSnapshot(dateStr){
+  const [year,month1]=String(dateStr).split('-').map(Number);
+  if(!year||!month1) return null;
+  const month=month1-1;
+  const data=loadData(), scoped=dataThroughDate(data,dateStr), targets=loadTargets();
+  const elapsed=getElapsedMonthsInQuarter(year,month);
+  const actual=getQuarterActual(scoped,year,month);
+  const latestDate=latestDataDateThrough(data,dateStr);
+  const metrics=METRICS.map(m=>{
+    const baseTarget=targets[m.key];
+    const hasTarget=baseTarget!==null&&baseTarget!==undefined;
+    const totalTarget=hasTarget?(m.monthly?baseTarget:baseTarget*elapsed):null;
+    const value=Number(actual[m.key]||0);
+    const remain=hasTarget?Math.max(0,Number((totalTarget-value).toFixed(1))):null;
+    const pct=hasTarget&&totalTarget>0?Math.round(value/totalTarget*100):null;
+    return {
+      key:m.key,name:m.name,unit:m.unit,monthly:!!m.monthly,
+      actual:value,baseTarget:hasTarget?Number(baseTarget):null,
+      target:hasTarget?Number(totalTarget):null,
+      remain,pct,
+      status:!hasTarget?'目標なし':value>=totalTarget?'達成':pct<70?'要注意':'注意'
+    };
+  });
+  return {
+    schemaVersion:1,source:'セルナビ',snapshotDate:dateStr,latestInputDate:latestDate,
+    period:{year,month:month1,quarter:getQuarter(year,month)?.name||'',elapsedMonths:elapsed},
+    metrics,createdAt:new Date().toISOString()
+  };
+}
+function publishWorknoteBridge(dateStr=inputDate){
+  try{
+    const snapshot=buildWorknoteSnapshot(dateStr);
+    if(!snapshot) return false;
+    let bridge={schemaVersion:1,source:'セルナビ',snapshots:{}};
+    try{bridge={...bridge,...JSON.parse(localStorage.getItem(WORKNOTE_BRIDGE_KEY)||'{}')}}catch{}
+    bridge.snapshots=bridge.snapshots||{};
+    bridge.snapshots[dateStr]=snapshot;
+    const keys=Object.keys(bridge.snapshots).sort();
+    while(keys.length>120){delete bridge.snapshots[keys.shift()]}
+    bridge.latestDate=dateStr;
+    bridge.updatedAt=new Date().toISOString();
+    localStorage.setItem(WORKNOTE_BRIDGE_KEY,JSON.stringify(bridge));
+    return true;
+  }catch(err){console.warn('WORKNOTE bridge publish failed',err);return false}
+}
+
 
 // ══════════════════════════════════════════
 // STATE
@@ -598,6 +664,7 @@ function deleteHistoryDate(dk){
   const data=loadData();
   delete data[dk];
   saveData(data);
+   publishWorknoteBridge(dk);
   historySelectedDate=null;
   renderHistory();
   showToast('削除しました');
@@ -909,6 +976,7 @@ function applyCloudPayload(payload){
   if(payload.targets) localStorage.setItem('sellnavi_targets',JSON.stringify({...DEFAULT_TARGETS,...payload.targets}));
   if(typeof payload.lineText==='string') localStorage.setItem(LINE_TEXT_KEY,payload.lineText);
   refreshLineShareInStorage();
+  publishWorknoteBridge(inputDate);
   return true;
 }
 async function fetchCloudRecord(){
@@ -1041,6 +1109,12 @@ function renderSettings() {
     <div class="card">${rows}</div>
     <button class="settings-save-btn" onclick="saveSettings()">保存</button>
 
+    <div class="section-label">WORKNOTE連携</div>
+    <div class="card">
+      <div class="sync-note"><b>連携中：</b> セルナビで保存した店舗目標・実績・残数・進捗をWORKNOTEへ自動共有します。同じ端末・同じブラウザでは再入力不要です。</div>
+      <div class="sync-status">共有キー：worknote_sellnavi_bridge_v1 / 最終更新は実績保存時に自動反映</div>
+    </div>
+
     <div class="section-label">複数端末データ同期</div>
     <div class="card">
       <div class="sync-note"><b>同期設定済み：</b> 通常は自動同期されます。新しい端末を追加したときだけ「クラウドから受け取る」を使用してください。</div>
@@ -1066,6 +1140,7 @@ function saveSettings(){
 // ══════════════════════════════════════════
 updateHeader();
 renderInput();
+publishWorknoteBridge(inputDate);
 setTimeout(()=>initCloudSync(),0);
 let deferredInstallPrompt=null;
 
@@ -1107,7 +1182,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=13',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=14',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
