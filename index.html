@@ -591,7 +591,6 @@ function saveInput(showMessage=true) {
   METRICS.forEach(m=>{data[inputDate][m.key]=inputValues[m.key];});
   saveData(data);
   // 保存した実績から、LINE共有の日付・残数をその場で再計算して自動反映
-  refreshLineShareInStorage();
   lastInputSavedAt=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
   const status=document.getElementById('input-save-status');
   if(status) status.textContent=`最終保存 ${lastInputSavedAt}`;
@@ -796,67 +795,32 @@ function renderAnalysis() {
 // ══════════════════════════════════════════
 // LINE PAGE
 // ══════════════════════════════════════════
-const LINE_TEXT_KEY='sellnavi_line_text';
 const LINE_COMMENT_KEY='sellnavi_line_comment';
+const LEGACY_LINE_TEXT_KEY='sellnavi_line_text';
+const LINE_SCHEMA_KEY='sellnavi_line_schema_version';
+const LINE_SCHEMA_VERSION='19';
 
-function loadLineText(){
-  const saved=localStorage.getItem(LINE_TEXT_KEY);
-  if(saved!==null) return saved;
-  const initial=buildLineText();
-  localStorage.setItem(LINE_TEXT_KEY,initial);
-  return initial;
+function migrateLineStorage(){
+  // v19: 過去のLINE共有本文は今後一切参照しない。
+  // 旧本文が残っていると混入原因になるため、起動時に削除する。
+  try{ localStorage.removeItem(LEGACY_LINE_TEXT_KEY); }catch{}
+  try{ localStorage.setItem(LINE_SCHEMA_KEY,LINE_SCHEMA_VERSION); }catch{}
 }
-function saveLineText(text){
-  localStorage.setItem(LINE_TEXT_KEY,text);
-  if(typeof scheduleCloudPush==='function') scheduleCloudPush();
-  const status=document.getElementById('line-save-status');
-  if(status) status.textContent='自動保存しました';
-}
+
 function loadLineComment(){
   const saved=localStorage.getItem(LINE_COMMENT_KEY);
   const defaultText='●初期設定について\nmyauは80%目標に対して71.9%となってます\nポンタ連携は70%目標に対して69.2%となってます\n\n●機種変更について、平日でも先月と比べて成約台数多くなっていてこの調子で継続していきましょー\n●セルアップも残数多い分マネ活プランでの誘導を意識してやっていきましょー\n\n●タブレットまだ0台なのでここを意識して0台を1台がんばりましょー\n\n●クレカについて、月初からGOLDの成約があってこの調子継続して、一人の5枚の目標を達成するように頑張っていきましょー\n●じぶん銀行も月初から成約されてるのでこの調子で目標達成していきましょー\n\n●サポート定額は日割りとして2件出していきたくて、操作案内の方も積極的に案内していきましょー\n●+1Collectionの進捗は良くてこの調子継続して頑張っていきましょー\n\n●世帯商材の足切りである自転車サポートは残5\n\n●個人商材の足切りであるAmazonPrimeは残１';
-
   if(saved===null){
     localStorage.setItem(LINE_COMMENT_KEY,defaultText);
     return defaultText;
   }
-
-  // v18移行：既存コメントの一番上に「初期設定について」が無ければ追加
-  if(!String(saved).includes('●初期設定について')){
-    const migrated=`●初期設定について
-myauは80%目標に対して71.9%となってます
-ポンタ連携は70%目標に対して69.2%となってます
-
-${saved}`;
-    localStorage.setItem(LINE_COMMENT_KEY,migrated);
-    return migrated;
-  }
-  return saved;
+  return String(saved);
 }
+
 function saveLineComment(text){
-  localStorage.setItem(LINE_COMMENT_KEY,text);
+  localStorage.setItem(LINE_COMMENT_KEY,String(text??''));
   const status=document.getElementById('line-comment-save-status');
-  if(status) status.textContent='保存しました';
-}
-function buildLineDisplayText(){
-  // v18: 過去にLINE画面へ保存された文章は完全に無視。
-  // 表示するのは「現在の実績から生成した本文」＋「設定画面のLINEコメント」だけ。
-  const baseText=buildLineText();
-  const comment=loadLineComment().trim();
-  if(!comment) return baseText;
-  return `${baseText.replace(/\s+$/,'')}\n\n${comment}`;
-}
-function renderLine() {
-  const el=document.getElementById('page-line');
-  const text=buildLineDisplayText();
-  el.innerHTML=`
-    <div class="section-label">LINE 共有テキスト</div>
-    <div class="inp-hint">表示内容は「最新実績」＋「設定画面のLINEコメント」だけです。過去のLINE保存文章は表示しません</div>
-    <textarea class="line-editor" id="line-editor" readonly>${escHtml(text)}</textarea>
-    <div class="save-status">この画面では編集しません</div>
-    <button class="copy-btn" onclick="copyLine()">📋 文章をコピー</button>
-    <div class="copy-toast" id="copy-toast"></div>
-    <div style="height:80px"></div>`;
+  if(status) status.textContent='自動保存しました';
 }
 
 function buildLineMetricLines(){
@@ -875,7 +839,8 @@ function buildLineMetricLines(){
   });
   return map;
 }
-function buildLineText() {
+
+function buildLineText(){
   const now=new Date();
   const month=now.getMonth(),day=now.getDate();
   const dow=DOWS[now.getDay()];
@@ -884,80 +849,38 @@ function buildLineText() {
   METRICS.forEach(m=>lines.push(metricLines[m.name]));
   return lines.join('\n');
 }
-function currentLineDateLabel(){
-  const now=new Date();
-  return `${now.getMonth()+1}月${now.getDate()}日（${DOWS[now.getDay()]}）`;
-}
-function looksLikeLineDate(line){
-  return /^\s*\d{1,2}月\d{1,2}日（[日月火水木金土]）\s*$/.test(String(line||''));
-}
-function metricFromLine(line){
-  // 自由編集で先頭に記号を付けても、実績行として認識する
-  const normalized=String(line||'').trimStart().replace(/^[・●○■□◆◇▶▷►→※★☆\-—–\s]+/,'');
-  return METRICS.find(m=>normalized.startsWith(m.name))||null;
-}
-function applyLatestDataToLineText(text){
-  const metricLines=buildLineMetricLines();
-  const currentDate=currentLineDateLabel();
-  const existing=String(text||'').split('\n');
-  const found=new Set();
-  let dateUpdated=false;
 
-  const updated=existing.map(line=>{
-    if(looksLikeLineDate(line)){
-      dateUpdated=true;
-      const indent=line.match(/^\s*/)?.[0]||'';
-      return indent+currentDate;
-    }
-    const metric=metricFromLine(line);
-    if(!metric) return line;
-    found.add(metric.name);
-    const indent=line.match(/^\s*/)?.[0]||'';
-    return indent+metricLines[metric.name];
-  });
-
-  // 日付行が消されていた場合は、見出し直後に最新日付を戻す
-  if(!dateUpdated){
-    const titleIndex=updated.findIndex(line=>String(line).trim()==='セルナビの実績共有です');
-    const insertAt=titleIndex>=0?titleIndex+1:Math.min(2,updated.length);
-    updated.splice(insertAt,0,'',currentDate);
-  }
-
-  // 実績行が誤って消されていても、最新値で復元する
-  const missing=METRICS.filter(m=>!found.has(m.name));
-  if(missing.length){
-    if(updated.length&&updated[updated.length-1]!=='') updated.push('');
-    missing.forEach(m=>updated.push(metricLines[m.name]));
-  }
-  return updated.join('\n');
+function buildLineDisplayText(){
+  // LINE画面で表示する唯一の構成
+  // ① 現在の実績から毎回生成した本文
+  // ② 設定画面に保存したコメント
+  const autoText=buildLineText().trimEnd();
+  const comment=loadLineComment().trim();
+  return comment ? `${autoText}\n\n${comment}` : autoText;
 }
-function refreshLineShareInStorage(){
-  const current=loadLineText();
-  const updated=applyLatestDataToLineText(current);
-  if(updated!==current) localStorage.setItem(LINE_TEXT_KEY,updated);
-  const editor=document.getElementById('line-editor');
-  if(editor && editor.value!==updated) editor.value=updated;
-  return updated;
-}
-// 旧名から呼ばれても完全自動更新へ流す
-function refreshLineNumbersInStorage(){ return refreshLineShareInStorage(); }
-function updateLineNumbers(){ return refreshLineShareInStorage(); }
 
-function resetLineText(){
-  if(!confirm('現在の編集内容を消して、最新の日付・実績から基本文を作り直しますか？')) return;
-  const text=buildLineText();
-  const editor=document.getElementById('line-editor');
-  if(editor) editor.value=text;
-  saveLineText(text);
-  showCopyToast('基本文を再生成しました ✓');
+function renderLine(){
+  const el=document.getElementById('page-line');
+  const text=buildLineDisplayText();
+  el.innerHTML=`
+    <div class="section-label">LINE 共有テキスト</div>
+    <div class="inp-hint">表示は「現在の実績」＋「設定画面のLINEコメント」のみ。過去のLINE文章は読み込みません</div>
+    <textarea class="line-editor" id="line-editor" readonly>${escHtml(text)}</textarea>
+    <div class="save-status">編集は「設定 → LINEコメント」から行います</div>
+    <button class="copy-btn" onclick="copyLine()">📋 文章をコピー</button>
+    <div class="copy-toast" id="copy-toast"></div>
+    <div style="height:80px"></div>`;
 }
-function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
 function copyLine(){
-  const editor=document.getElementById('line-editor');
-  const text=editor?editor.value:buildLineDisplayText();
-  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(()=>showCopyToast('コピーしました ✓')).catch(()=>fallbackCopy(text));
-  else fallbackCopy(text);
+  const text=buildLineDisplayText();
+  if(navigator.clipboard&&navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(()=>showCopyToast('コピーしました ✓')).catch(()=>fallbackCopy(text));
+  } else fallbackCopy(text);
 }
+
 function fallbackCopy(text){
   const ta=document.createElement('textarea');
   ta.value=text;ta.style.cssText='position:fixed;opacity:0;top:0;left:0';
@@ -965,6 +888,7 @@ function fallbackCopy(text){
   try{document.execCommand('copy');showCopyToast('コピーしました ✓');}catch{}
   document.body.removeChild(ta);
 }
+
 function showCopyToast(message='コピーしました ✓'){
   const el=document.getElementById('copy-toast');
   if(el){el.textContent=message;setTimeout(()=>{if(el)el.textContent='';},2000);}
@@ -1000,8 +924,7 @@ function buildCloudPayload(){
   return {
     data:loadData(),
     targets:loadTargets(),
-    lineText:loadLineText(),
-    version:18,
+    version:19,
     savedAt:new Date().toISOString()
   };
 }
@@ -1009,8 +932,7 @@ function applyCloudPayload(payload){
   if(!payload||typeof payload!=='object') return false;
   if(payload.data) localStorage.setItem('sellnavi_data',JSON.stringify(payload.data));
   if(payload.targets) localStorage.setItem('sellnavi_targets',JSON.stringify({...DEFAULT_TARGETS,...payload.targets}));
-  if(typeof payload.lineText==='string') localStorage.setItem(LINE_TEXT_KEY,payload.lineText);
-  refreshLineShareInStorage();
+  // v19: LINE本文・LINEコメントはクラウド受信で触らない
   publishWorknoteBridge(inputDate);
   return true;
 }
@@ -1152,7 +1074,7 @@ function renderSettings() {
 
     <div class="section-label">LINEコメント</div>
     <div class="card">
-      <div class="sync-note">ここに入力した文章は、LINE共有画面の実績一覧の下にそのまま追加されます。実績計算には一切使いません。</div>
+      <div class="sync-note">ここに入力した文章だけが、LINE共有画面の実績一覧の下に追加されます。ここで入力した文章は実績計算には一切使いません。</div>
       <div style="padding:10px 14px 0">
         <textarea id="line-comment-setting" class="line-editor" style="width:100%;margin:0;min-height:300px" oninput="saveLineComment(this.value)">${escHtml(loadLineComment())}</textarea>
       </div>
@@ -1182,6 +1104,7 @@ function saveSettings(){
 // ══════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════
+migrateLineStorage();
 updateHeader();
 renderInput();
 publishWorknoteBridge(inputDate);
@@ -1226,7 +1149,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=18',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=19',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
