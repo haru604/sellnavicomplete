@@ -510,6 +510,7 @@ function renderInput() {
 
 function metricRowHTML(m) {
   const money=isMoneyMetric(m);
+  const numericOnly=['supportFlat','paidSupport','plus1Collection'].includes(m.key);
   const v=fmtMetric(inputValues[m.key]||0,m);
   const step=money?10000:1;
   return `
@@ -520,8 +521,9 @@ function metricRowHTML(m) {
         <div class="counter-wrap">
           <button class="cnt-btn" onclick="changeVal('${m.key}',-${step})">−</button>
           <div class="cnt-val">
-            <input type="${money?'text':'number'}" id="inp-${m.key}" value="${v}" step="${money?10000:0.1}"
-              inputmode="${money?'text':'decimal'}"
+            <input type="${numericOnly?'text':(money?'text':'number')}" id="inp-${m.key}" value="${v}" step="${money?10000:0.1}"
+              inputmode="${numericOnly?'numeric':(money?'numeric':'decimal')}"
+              ${numericOnly?'pattern="[0-9]*"':''}
               onfocus="onValFocus('${m.key}',this)"
               oninput="onValTyping('${m.key}',this.value)"
               onchange="onValInput('${m.key}',this.value)"
@@ -812,10 +814,24 @@ function saveLineText(text){
 }
 function loadLineComment(){
   const saved=localStorage.getItem(LINE_COMMENT_KEY);
-  if(saved!==null) return saved;
-  const initial='●機種変更について、平日でも先月と比べて成約台数多くなっていてこの調子で継続していきましょー\n●セルアップも残数多い分マネ活プランでの誘導を意識してやっていきましょー\n\n●タブレットまだ0台なのでここを意識して0台を1台がんばりましょー\n\n●クレカについて、月初からGOLDの成約があってこの調子継続して、一人の5枚の目標を達成するように頑張っていきましょー\n●じぶん銀行も月初から成約されてるのでこの調子で目標達成していきましょー\n\n●サポート定額は日割りとして2件出していきたくて、操作案内の方も積極的に案内していきましょー\n●+1Collectionの進捗は良くてこの調子継続して頑張っていきましょー\n\n●世帯商材の足切りである自転車サポートは残5\n\n●個人商材の足切りであるAmazonPrimeは残１';
-  localStorage.setItem(LINE_COMMENT_KEY,initial);
-  return initial;
+  const defaultText='●初期設定について\nmyauは80%目標に対して71.9%となってます\nポンタ連携は70%目標に対して69.2%となってます\n\n●機種変更について、平日でも先月と比べて成約台数多くなっていてこの調子で継続していきましょー\n●セルアップも残数多い分マネ活プランでの誘導を意識してやっていきましょー\n\n●タブレットまだ0台なのでここを意識して0台を1台がんばりましょー\n\n●クレカについて、月初からGOLDの成約があってこの調子継続して、一人の5枚の目標を達成するように頑張っていきましょー\n●じぶん銀行も月初から成約されてるのでこの調子で目標達成していきましょー\n\n●サポート定額は日割りとして2件出していきたくて、操作案内の方も積極的に案内していきましょー\n●+1Collectionの進捗は良くてこの調子継続して頑張っていきましょー\n\n●世帯商材の足切りである自転車サポートは残5\n\n●個人商材の足切りであるAmazonPrimeは残１';
+
+  if(saved===null){
+    localStorage.setItem(LINE_COMMENT_KEY,defaultText);
+    return defaultText;
+  }
+
+  // v18移行：既存コメントの一番上に「初期設定について」が無ければ追加
+  if(!String(saved).includes('●初期設定について')){
+    const migrated=`●初期設定について
+myauは80%目標に対して71.9%となってます
+ポンタ連携は70%目標に対して69.2%となってます
+
+${saved}`;
+    localStorage.setItem(LINE_COMMENT_KEY,migrated);
+    return migrated;
+  }
+  return saved;
 }
 function saveLineComment(text){
   localStorage.setItem(LINE_COMMENT_KEY,text);
@@ -823,7 +839,9 @@ function saveLineComment(text){
   if(status) status.textContent='保存しました';
 }
 function buildLineDisplayText(){
-  const baseText=loadLineText();
+  // v18: 過去にLINE画面へ保存された文章は完全に無視。
+  // 表示するのは「現在の実績から生成した本文」＋「設定画面のLINEコメント」だけ。
+  const baseText=buildLineText();
   const comment=loadLineComment().trim();
   if(!comment) return baseText;
   return `${baseText.replace(/\s+$/,'')}\n\n${comment}`;
@@ -833,7 +851,7 @@ function renderLine() {
   const text=buildLineDisplayText();
   el.innerHTML=`
     <div class="section-label">LINE 共有テキスト</div>
-    <div class="inp-hint">実績部分は自動計算、コメント部分は設定画面の「LINEコメント」から反映されます</div>
+    <div class="inp-hint">表示内容は「最新実績」＋「設定画面のLINEコメント」だけです。過去のLINE保存文章は表示しません</div>
     <textarea class="line-editor" id="line-editor" readonly>${escHtml(text)}</textarea>
     <div class="save-status">この画面では編集しません</div>
     <button class="copy-btn" onclick="copyLine()">📋 文章をコピー</button>
@@ -983,7 +1001,7 @@ function buildCloudPayload(){
     data:loadData(),
     targets:loadTargets(),
     lineText:loadLineText(),
-    version:17,
+    version:18,
     savedAt:new Date().toISOString()
   };
 }
@@ -1208,7 +1226,7 @@ if(isInstalledPWA()){
 }
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
-    try{await navigator.serviceWorker.register('./sw.js?v=17',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
+    try{await navigator.serviceWorker.register('./sw.js?v=18',{scope:'./', updateViaCache:'none'});await navigator.serviceWorker.ready;}catch(err){console.error('Service Worker registration failed',err);}
   });
 }
 </script>
